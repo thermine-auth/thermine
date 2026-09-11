@@ -1,28 +1,44 @@
-// Package config loads runtime configuration from the environment.
 package config
 
 import (
-	"os"
-	"time"
+	"errors"
+	"fmt"
+	"io/fs"
+	"strings"
+
+	"github.com/spf13/viper"
 )
 
-// Config holds the settings the auth server needs to run.
 type Config struct {
-	Addr            string
-	ShutdownTimeout time.Duration
+	Addr        string
+	CORSOrigins []string
 }
 
-// Load reads configuration from the environment, falling back to defaults.
-func Load() Config {
+func Load() (Config, error) {
+	v := viper.New()
+	v.SetConfigFile(".env")
+	v.SetConfigType("env")
+	v.AutomaticEnv()
+
+	v.SetDefault("XERMESS_ADDR", ":8080")
+	v.SetDefault("XERMESS_CORS_ORIGINS", "http://localhost:5173")
+
+	if err := v.ReadInConfig(); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return Config{}, fmt.Errorf("read .env: %w", err)
+	}
+
 	return Config{
-		Addr:            env("XERMESS_ADDR", ":8080"),
-		ShutdownTimeout: 10 * time.Second,
-	}
+		Addr:        v.GetString("XERMESS_ADDR"),
+		CORSOrigins: splitList(v.GetString("XERMESS_CORS_ORIGINS")),
+	}, nil
 }
 
-func env(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
+func splitList(s string) []string {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
 	}
-	return fallback
+	return out
 }

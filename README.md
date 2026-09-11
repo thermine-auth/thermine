@@ -52,8 +52,34 @@ Run `make` on its own to list them.
 ```
 cmd/xermess/        server entrypoint
 internal/config/    environment configuration
-internal/server/    HTTP server and routes
+internal/server/    engine setup (server.go) and the route table (routes.go)
+internal/handler/   one file per resource: health.go, auth.go
 web/                SvelteKit frontend
+```
+
+Adding an endpoint is two steps: write the method on a handler in
+`internal/handler/`, then mount it in `registerRoutes` in
+`internal/server/routes.go`.
+
+## API
+
+| Method | Path                    | Description                     |
+| ------ | ----------------------- | ------------------------------- |
+| `GET`  | `/healthz`              | Liveness check                  |
+| `GET`  | `/readyz`               | Readiness check                 |
+| `POST` | `/api/v1/auth/register` | Create an account               |
+| `POST` | `/api/v1/auth/login`    | Exchange credentials for tokens |
+| `POST` | `/api/v1/auth/refresh`  | Exchange a refresh token        |
+| `POST` | `/api/v1/auth/logout`   | Revoke the current session      |
+| `GET`  | `/api/v1/auth/me`       | The authenticated account       |
+
+The `/auth` routes validate their request bodies but return `501
+Not Implemented` — the logic is not written yet.
+
+Errors all use one envelope:
+
+```json
+{ "error": { "code": "invalid_request", "message": "..." } }
 ```
 
 ## Configuration
