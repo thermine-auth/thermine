@@ -1,0 +1,41 @@
+# Normalize line endings; check out LF everywhere
+* text=auto eol=lf
+
+# Go
+*.go       text eol=lf diff=golang
+go.mod     text eol=lf
+go.sum     text eol=lf merge=union
+*.tmpl     text eol=lf
+*.gohtml   text eol=lf diff=html
+
+# Config & docs
+*.yml      text eol=lf
+*.yaml     text eol=lf
+*.json     text eol=lf
+*.toml     text eol=lf
+*.md       text eol=lf diff=markdown
+Makefile   text eol=lf
+Dockerfile text eol=lf
+*.sh       text eol=lf
+
+# Scripts that must stay CRLF
+*.bat      text eol=crlf
+*.ps1      text eol=crlf
+
+# Generated: collapse in diffs, exclude from language stats
+go.sum          linguist-generated=true
+ui/pnpm-lock.yaml linguist-generated=true
+*_templ.go      linguist-generated=true
+*.pb.go         linguist-generated=true
+mock_*.go       linguist-generated=true
+
+# Binary assets
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.pdf  binary

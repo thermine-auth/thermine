@@ -1,0 +1,52 @@
+# Binaries
+/bin/
+/tmp/
+/alphabay
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test & profiling output
+*.test
+*.out
+coverage.*
+*.prof
+*.pprof
+
+# Go workspace / vendor
+go.work
+go.work.sum
+/vendor/
+
+# Air (hot reload)
+build-errors.log
+.air.toml.local
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local data
+*.db
+*.sqlite
+*.sqlite3
+/uploads/
+*.log
+
+# Editors
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.iml
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Application data
+/data/
