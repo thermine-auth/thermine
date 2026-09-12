@@ -6,6 +6,7 @@ import "time"
 type AdminUser struct {
 	Base
 
+	Username     string `gorm:"uniqueIndex;size:100;not null" json:"username"`
 	Email        string `gorm:"uniqueIndex;size:255;not null" json:"email"`
 	FirstName    string `gorm:"size:100;not null" json:"first_name"`
 	LastName     string `gorm:"size:100;not null" json:"last_name"`

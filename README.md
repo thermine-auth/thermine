@@ -131,6 +131,16 @@ what the make targets above use.
 
 Never edit a migration that has already run anywhere. Add a new one.
 
+### The first administrator
+
+`20260912113137_seed_admin.go` creates the four roles and one administrator
+holding `super_admin`, from `XERMESS_ADMIN_USERNAME` and
+`XERMESS_ADMIN_PASSWORD`. The password is stored as a bcrypt hash, never as
+itself. With either setting empty the roles are still created and no
+administrator is, so a test database does not need credentials.
+
+Rolling this migration back deletes that administrator and the roles.
+
 ## Configuration
 
 Every setting is an environment variable, read from `.env` first; real

@@ -14,6 +14,14 @@ type Config struct {
 	Addr        string
 	CORSOrigins []string
 	DB          DB
+	Admin       Admin
+}
+
+// Admin is the first administrator, created by a migration. Leaving either
+// field empty means no administrator is created.
+type Admin struct {
+	Username string
+	Password string
 }
 
 // DB is the database connection and migration settings.
@@ -26,13 +34,43 @@ type DB struct {
 	MigrateDir string
 }
 
-// Load reads .env, then the environment, which wins. A missing .env is fine:
-// in a container there are only environment variables.
-func Load() (Config, error) {
+// read builds the reader both loaders use: .env first, then the environment,
+// which wins. A missing .env is fine: in a container there are only
+// environment variables.
+func read() (*viper.Viper, error) {
 	v := viper.New()
 	v.SetConfigFile(".env")
 	v.SetConfigType("env")
 	v.AutomaticEnv()
+
+	if err := v.ReadInConfig(); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, err
+	}
+
+	return v, nil
+}
+
+// LoadAdmin reads only the administrator credentials. The migration that
+// seeds the first administrator uses this rather than Load, so a missing
+// database setting cannot fail a migration that has no use for it.
+func LoadAdmin() (Admin, error) {
+	v, err := read()
+	if err != nil {
+		return Admin{}, err
+	}
+
+	return Admin{
+		Username: v.GetString("XERMESS_ADMIN_USERNAME"),
+		Password: v.GetString("XERMESS_ADMIN_PASSWORD"),
+	}, nil
+}
+
+// Load reads every setting the server needs.
+func Load() (Config, error) {
+	v, err := read()
+	if err != nil {
+		return Config{}, err
+	}
 
 	v.SetDefault("XERMESS_ADDR", ":8080")
 	v.SetDefault("XERMESS_CORS_ORIGINS", "http://localhost:5173")
@@ -42,13 +80,13 @@ func Load() (Config, error) {
 	v.SetDefault("XERMESS_DB_MIGRATE", true)
 	v.SetDefault("XERMESS_DB_MIGRATE_DIR", "./migrations")
 
-	if err := v.ReadInConfig(); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return Config{}, err
-	}
-
 	cfg := Config{
 		Addr:        v.GetString("XERMESS_ADDR"),
 		CORSOrigins: splitList(v.GetString("XERMESS_CORS_ORIGINS")),
+		Admin: Admin{
+			Username: v.GetString("XERMESS_ADMIN_USERNAME"),
+			Password: v.GetString("XERMESS_ADMIN_PASSWORD"),
+		},
 		DB: DB{
 			Driver:     v.GetString("XERMESS_DB_DRIVER"),
 			DSN:        v.GetString("XERMESS_DB_DSN"),
