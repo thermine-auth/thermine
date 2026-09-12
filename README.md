@@ -52,12 +52,21 @@ cmd/migrate/main.go            runs migrations by hand: up, down, status
 internal/config/config.go      reads .env
 internal/database/database.go  opens the connection
 internal/database/migrate.go   applies migrations
+internal/auth/auth.go          signs administrators in and out, records what they do
 internal/server/server.go      the server: middleware, routes, handlers
-internal/server/middleware.go  request logging and CORS
+internal/server/admin.go       the admin panel's endpoints
+internal/server/middleware.go  request logging, CORS, the session check
 internal/model/                one file per table, listed in model.All
 
 migrations/                    one Go file per migration, applied in order
-web/                           SvelteKit frontend
+
+web/src/lib/api/               the typed client for this API
+web/src/lib/components/ui/     the building blocks: Button, Card, TextField, Icon…
+web/src/lib/components/admin/  the panel's own pieces: header, tables, stats
+web/src/lib/styles/            fonts.css, tokens.css, base.css, ark.css
+web/src/lib/theme.svelte.ts    the light/dark/auto choice
+web/src/routes/admin/login/    the sign-in page
+web/src/routes/admin/(panel)/  everything that needs a session
 ```
 
 Four packages, each with one job: `config` reads settings, `database` talks to
@@ -74,13 +83,96 @@ before this runs for real.
 
 ## API
 
-| Method | Path            | Description        |
-| ------ | --------------- | ------------------ |
-| `GET`  | `/healthz`      | The server is up   |
-| `GET`  | `/api/v1/hello` | Placeholder        |
+| Method | Path                          | Needs a session | Description                    |
+| ------ | ----------------------------- | --------------- | ------------------------------ |
+| `GET`  | `/healthz`                    | no              | The server is up               |
+| `GET`  | `/api/v1/hello`               | no              | Placeholder                    |
+| `POST` | `/api/v1/admin/auth/login`    | no              | Sign in, sets the session cookie |
+| `POST` | `/api/v1/admin/auth/logout`   | yes             | Sign out, revokes the session  |
+| `GET`  | `/api/v1/admin/me`            | yes             | The signed-in administrator    |
+| `GET`  | `/api/v1/admin/overview`      | yes             | Counts and recent activity     |
+| `GET`  | `/api/v1/admin/sessions`      | yes             | The caller's own sessions      |
 
-To add an endpoint: mount it in `registerRoutes` and write its handler below,
-both in `internal/server/server.go`.
+Sessions are a random token in an HttpOnly cookie; the database keeps only a
+SHA-256 hash of it, so a leaked database cannot be signed in with. They last
+12 hours. Signing in, failing to sign in, and signing out are all written to
+`audit_logs`.
+
+To add an endpoint: mount it in `registerRoutes` and write its handler, both in
+`internal/server/server.go`, or in `internal/server/admin.go` for the admin
+panel. Put it behind `RequireAdmin` unless it is meant to be public.
+
+## Admin panel
+
+The SvelteKit app in `web/` is the admin panel.
+
+```sh
+make run          # the API, on :8080
+make web-dev      # the panel, on :5173
+```
+
+Then open http://localhost:5173/admin/login and sign in with
+`XERMESS_ADMIN_USERNAME` and `XERMESS_ADMIN_PASSWORD`. Signing in leads to
+`/admin/overview`.
+
+The panel runs in the browser (`ssr = false`): it talks to the API on its own
+origin with the session cookie, which is why `XERMESS_CORS_ORIGINS` has to
+list the panel's address, and why `web/.env` has to name the API in
+`PUBLIC_API_URL`.
+
+**Loading.** The session check lives in `admin/(panel)/+layout.ts` and the
+page data in `overview/+page.ts`. Loading in `load` rather than in `onMount`
+is what lets SvelteKit redirect before a page renders, run requests in
+parallel, and reload them on `invalidateAll()` after signing in or out.
+
+**Components.** `lib/components/ui` holds the building blocks and
+`lib/components/admin` the pieces only this panel uses. Pages compose those
+and never reach for an Ark UI primitive directly, so a change to how a field
+looks happens in one file.
+
+**Styling.** [Ark UI](https://ark-ui.com) ships no CSS: every part it renders
+carries `data-scope` and `data-part`, and `lib/styles/ark.css` styles those
+attributes. Everything else refers to the tokens in `tokens.css`. There is no
+CSS framework.
+
+The palette is taken from the [PocketBase](https://pocketbase.io) admin UI —
+its near-black primary, soft grey secondary, navy header and filled inputs —
+with the dark theme built the way PocketBase builds it: one base colour mixed
+with increasing amounts of white, so the greys stay in step.
+
+Fields follow their settings page exactly: one filled block with the label
+inside it at the top and the value below, no border anywhere, and focus shown
+by the block darkening (`#e4e8ec` to `#dce0e5`) while the label goes from
+`#687278` to the full text colour. The measurements — a 24px label row over a
+38.5px value row, 5px radius, 13px bold label, 13px side padding — are in
+`lib/styles/ark.css`.
+
+**Theme.** Light or dark, switched by the toggle in the header — one click,
+no menu — and remembered in `localStorage`. Someone who has not chosen yet
+gets whatever their system prefers. A small script in `app.html` applies the
+saved choice before the first paint, so a reader who chose dark never sees a
+flash of the light theme. The stylesheet reads `data-theme` on `<html>`;
+`lib/theme.svelte.ts` is what sets it.
+
+**Fonts.** Product Sans for text and Consolas for code, both loaded with
+`local()` only. Neither can be bundled — Product Sans is Google's corporate
+typeface and is not licensed for redistribution, and Consolas ships with
+Windows and Office — so a machine that has them uses them and one that does
+not falls back quietly. To self-host licensed copies, put the files in
+`static/fonts` and add a `url(...)` source in `lib/styles/fonts.css`.
+
+**Icons** are [Remix Icon](https://remixicon.com), through `svelte-remixicon`.
+They are components, so only the ones actually used are bundled — there is no
+icon font to download. Pass one to the `Icon` wrapper rather than using it
+directly, which keeps sizing and alignment in one place:
+
+```svelte
+<Icon icon={RiLogoutBoxRLine} />
+```
+
+Give `Icon` a `label` only when the icon carries meaning on its own; beside
+text it stays `aria-hidden` so a screen reader does not read the same thing
+twice.
 
 ## Database
 

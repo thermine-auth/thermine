@@ -1,0 +1,66 @@
+import { PUBLIC_API_URL } from '$env/static/public';
+
+/** Where the API lives. In development it is a different port from this app. */
+const BASE_URL = PUBLIC_API_URL;
+
+/** A failed request. `status` is 0 when the server could not be reached. */
+export class ApiError extends Error {
+	constructor(
+		readonly status: number,
+		message: string
+	) {
+		super(message);
+		this.name = 'ApiError';
+	}
+
+	/** The session is missing or has expired. */
+	get isUnauthorized(): boolean {
+		return this.status === 401;
+	}
+}
+
+/**
+ * SvelteKit hands `load` functions their own fetch, which it uses to track
+ * dependencies and to replay requests on the client. Passing it in is what
+ * makes `invalidate` work; anything outside a load can leave it out.
+ */
+export type Fetch = typeof globalThis.fetch;
+
+type RequestOptions = {
+	method?: 'GET' | 'POST';
+	body?: unknown;
+	fetch?: Fetch;
+};
+
+async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+	const { method = 'GET', body, fetch: fetcher = globalThis.fetch } = options;
+
+	let response: Response;
+	try {
+		response = await fetcher(`${BASE_URL}/api/v1${path}`, {
+			method,
+			// The session lives in a cookie the browser will not send across
+			// origins unless asked. The server allows this origin by name.
+			credentials: 'include',
+			headers: { 'Content-Type': 'application/json' },
+			body: body === undefined ? undefined : JSON.stringify(body)
+		});
+	} catch {
+		// fetch only rejects when there was no answer at all.
+		throw new ApiError(0, 'Cannot reach the server. Is it running?');
+	}
+
+	const payload = await response.json().catch(() => ({}));
+
+	if (!response.ok) {
+		throw new ApiError(response.status, payload.error ?? 'Something went wrong');
+	}
+
+	return payload as T;
+}
+
+export const api = {
+	get: <T>(path: string, fetcher?: Fetch) => request<T>(path, { fetch: fetcher }),
+	post: <T>(path: string, body?: unknown, fetcher?: Fetch) =>
+		request<T>(path, { method: 'POST', body, fetch: fetcher })
+};

@@ -1,0 +1,146 @@
+/* Design tokens, taken from the PocketBase admin UI so this panel reads the
+   same way: a near-black primary, a soft grey secondary, a navy accent bar,
+   and filled inputs that only show their border on focus.
+
+   The dark palette is built the way PocketBase builds it — one base colour
+   mixed with increasing amounts of white — so the greys stay in step. */
+
+:root {
+	/* Type */
+	--font-sans: 'Product Sans', 'Google Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--font-mono: 'Consolas', ui-monospace, 'SF Mono', Menlo, monospace;
+	--text-xs: 12px;
+	--text-sm: 13px;
+	--text-base: 14px;
+	--text-lg: 15px;
+	--text-xl: 19px;
+	--text-2xl: 24px;
+	--line-height: 1.5;
+
+	/* Shape */
+	--radius-sm: 5px;
+	--radius-md: 6px;
+	--radius-lg: 12px;
+	--radius-pill: 999px;
+
+	/* Spacing, on a 5px step like PocketBase */
+	--space-1: 5px;
+	--space-2: 10px;
+	--space-3: 15px;
+	--space-4: 20px;
+	--space-5: 30px;
+	--space-6: 40px;
+
+	/* Controls */
+	--control-height: 45px;
+	--header-height: 55px;
+
+	/* Motion */
+	--speed-fast: 70ms;
+	--speed: 140ms;
+
+	/* Light palette */
+	--color-surface: #fff;
+	--color-body: #fff;
+	--color-primary: #25272d;
+	--color-primary-text: #fff;
+	--color-secondary: #e4e8ec;
+	--color-secondary-alt: #dce0e5;
+	--color-accent: #263b5e;
+	--color-accent-text: #fff;
+
+	--color-text: #25272d;
+	--color-text-hint: #687278;
+	--color-text-disabled: #a2a9ae;
+
+	--color-input: #e4e8ec;
+	--color-input-focus: #dce0e5;
+	--color-input-border: #d3d9df;
+	--color-border: #d3d9df;
+
+	--color-success: #22a96d;
+	--color-danger: #c33751;
+	--color-warning: #e57534;
+	--color-info: #3376e5;
+
+	--surface-success: color-mix(in srgb, var(--color-success), var(--color-surface) 80%);
+	--surface-danger: color-mix(in srgb, var(--color-danger), var(--color-surface) 80%);
+	--surface-info: color-mix(in srgb, var(--color-info), var(--color-surface) 80%);
+
+	--shadow-sm: 0 2px 5px 0 rgb(0 0 0 / 6%);
+	--shadow-md: 0 2px 12px 0 rgb(0 0 0 / 8%);
+	--selection: #465a7340;
+
+	color-scheme: light;
+}
+
+/* The dark palette, applied by choice. The second block covers the case where
+   the inline script in app.html could not run and no attribute was set, so
+   the system setting still decides. Both carry the same values; keep them
+   together when changing one. */
+
+:root[data-theme='dark'] {
+	--color-dark-base: #1c1c1c;
+
+	--color-surface: var(--color-dark-base);
+	--color-body: var(--color-dark-base);
+	--color-primary: color-mix(in srgb, var(--color-dark-base), white 14%);
+	--color-primary-text: #ebebeb;
+	--color-secondary: color-mix(in srgb, var(--color-dark-base), white 7%);
+	--color-secondary-alt: color-mix(in srgb, var(--color-dark-base), white 12%);
+	--color-accent: #263b5e;
+	--color-accent-text: #ebebeb;
+
+	--color-text: #ebebeb;
+	--color-text-hint: color-mix(in srgb, #ebebeb, transparent 40%);
+	--color-text-disabled: color-mix(in srgb, #ebebeb, transparent 55%);
+
+	--color-input: color-mix(in srgb, var(--color-dark-base), white 7%);
+	--color-input-focus: color-mix(in srgb, var(--color-dark-base), white 12%);
+	--color-input-border: color-mix(in srgb, var(--color-dark-base), white 14%);
+	--color-border: color-mix(in srgb, var(--color-dark-base), white 14%);
+
+	--color-success: #27865d;
+	--color-danger: #bb303e;
+	--color-warning: #cf4e17;
+	--color-info: #4273bd;
+
+	--shadow-sm: 0 2px 5px 0 rgb(0 0 0 / 30%);
+	--shadow-md: 0 2px 12px 0 rgb(0 0 0 / 40%);
+
+	color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme='light']) {
+		--color-dark-base: #1c1c1c;
+
+		--color-surface: var(--color-dark-base);
+		--color-body: var(--color-dark-base);
+		--color-primary: color-mix(in srgb, var(--color-dark-base), white 14%);
+		--color-primary-text: #ebebeb;
+		--color-secondary: color-mix(in srgb, var(--color-dark-base), white 7%);
+		--color-secondary-alt: color-mix(in srgb, var(--color-dark-base), white 12%);
+		--color-accent: #263b5e;
+		--color-accent-text: #ebebeb;
+
+		--color-text: #ebebeb;
+		--color-text-hint: color-mix(in srgb, #ebebeb, transparent 40%);
+		--color-text-disabled: color-mix(in srgb, #ebebeb, transparent 55%);
+
+		--color-input: color-mix(in srgb, var(--color-dark-base), white 7%);
+		--color-input-focus: color-mix(in srgb, var(--color-dark-base), white 12%);
+		--color-input-border: color-mix(in srgb, var(--color-dark-base), white 14%);
+		--color-border: color-mix(in srgb, var(--color-dark-base), white 14%);
+
+		--color-success: #27865d;
+		--color-danger: #bb303e;
+		--color-warning: #cf4e17;
+		--color-info: #4273bd;
+
+		--shadow-sm: 0 2px 5px 0 rgb(0 0 0 / 30%);
+		--shadow-md: 0 2px 12px 0 rgb(0 0 0 / 40%);
+
+		color-scheme: dark;
+	}
+}

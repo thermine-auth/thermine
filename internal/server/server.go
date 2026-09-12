@@ -7,7 +7,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
+	"xermess/internal/auth"
 	"xermess/internal/config"
 )
 
@@ -16,7 +18,7 @@ import (
 //
 // gin.New starts with no middleware, unlike gin.Default, which adds Gin's own
 // logger. We want the slog one instead, so the whole server logs the same way.
-func New(cfg config.Config, log *slog.Logger) *gin.Engine {
+func New(cfg config.Config, db *gorm.DB, log *slog.Logger) *gin.Engine {
 	r := gin.New()
 
 	r.Use(
@@ -25,22 +27,36 @@ func New(cfg config.Config, log *slog.Logger) *gin.Engine {
 		CORS(cfg.CORSOrigins),
 	)
 
-	registerRoutes(r)
+	registerRoutes(r, &admin{
+		auth: auth.New(db),
+		db:   db,
+		log:  log,
+		// The cookie is only sent over HTTPS when the browser reaches the API
+		// over HTTPS; over plain http in development it has to stay off.
+		secure: false,
+	})
 
 	return r
 }
 
-// registerRoutes mounts every route. This is the whole API surface: to add an
-// endpoint, add it here and write its handler below.
-//
-// Handlers that need the database will take it as a parameter, and New will
-// pass it through to here.
-func registerRoutes(r *gin.Engine) {
+// registerRoutes mounts every route. This is the whole API surface.
+func registerRoutes(r *gin.Engine, h *admin) {
 	r.GET("/healthz", health)
 
 	v1 := r.Group("/api/v1")
 	{
 		v1.GET("/hello", hello)
+
+		// Signing in is the one admin route that cannot require a session.
+		v1.POST("/admin/auth/login", h.login)
+
+		signedIn := v1.Group("/admin", RequireAdmin(h.auth))
+		{
+			signedIn.POST("/auth/logout", h.logout)
+			signedIn.GET("/me", h.me)
+			signedIn.GET("/overview", h.overview)
+			signedIn.GET("/sessions", h.sessions)
+		}
 	}
 
 	r.NoRoute(notFound)

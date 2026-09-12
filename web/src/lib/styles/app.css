@@ -1,0 +1,11 @@
+/* The stylesheet the app imports once, in the root layout.
+
+   fonts   — Product Sans and Consolas, loaded from the reader's machine
+   tokens  — the values everything else refers to, light and dark
+   base    — element defaults
+   ark     — the Ark UI parts, styled through their data attributes */
+
+@import './fonts.css';
+@import './tokens.css';
+@import './base.css';
+@import './ark.css';

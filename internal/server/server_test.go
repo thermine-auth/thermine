@@ -22,7 +22,7 @@ func testEngine(origins ...string) *gin.Engine {
 	cfg := config.Config{Addr: ":0", CORSOrigins: origins}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	return New(cfg, log)
+	return New(cfg, nil, log)
 }
 
 // do sends a request through the router and returns the response.

@@ -1,0 +1,49 @@
+/* Product Sans and Consolas are both proprietary: Product Sans is Google's
+   corporate typeface and is not licensed for redistribution, and Consolas
+   ships with Windows and Office. Neither can be bundled here.
+
+   These faces therefore load only from the reader's own machine — `local()`
+   and nothing else — so a machine that has them uses them and one that does
+   not falls back quietly, with no failed downloads.
+
+   To self-host licensed copies, put the files in static/fonts and add a
+   `url('/fonts/ProductSans-Regular.woff2') format('woff2')` source after the
+   local() entries below. */
+
+@font-face {
+	font-family: 'Product Sans';
+	src:
+		local('Product Sans'), local('ProductSans-Regular'), local('Google Sans'),
+		local('GoogleSans-Regular');
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'Product Sans';
+	src:
+		local('Product Sans Medium'), local('ProductSans-Medium'), local('Google Sans Medium'),
+		local('GoogleSans-Medium');
+	font-weight: 500;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'Product Sans';
+	src:
+		local('Product Sans Bold'), local('ProductSans-Bold'), local('Google Sans Bold'),
+		local('GoogleSans-Bold');
+	font-weight: 600 700;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'Consolas';
+	src: local('Consolas'), local('Consolas-Regular');
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+}

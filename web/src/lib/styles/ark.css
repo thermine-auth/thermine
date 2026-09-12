@@ -1,0 +1,142 @@
+/* Ark UI ships no styles: every part it renders carries data-scope and
+   data-part, and those attributes are what we style, so component markup
+   stays free of presentational class names.
+
+   The field is PocketBase's: one filled block with the label inside it at the
+   top and the value below, no border anywhere, and focus shown by the block
+   growing slightly darker rather than by an outline. Measured from their
+   settings page — background #e4e8ec, #dce0e5 on focus, 5px radius, a 13px
+   bold label that darkens when the field has focus. */
+
+[data-scope='field'][data-part='root'],
+[data-scope='password-input'][data-part='root'] {
+	position: relative;
+	display: block;
+	border-radius: var(--radius-sm);
+	background: var(--color-input);
+	transition: background-color var(--speed);
+}
+
+[data-scope='field'][data-part='root']:focus-within,
+[data-scope='password-input'][data-part='root']:focus-within {
+	background: var(--color-input-focus);
+}
+
+[data-scope='field'][data-part='root']:hover,
+[data-scope='password-input'][data-part='root']:hover {
+	background: var(--color-input-focus);
+}
+
+[data-scope='field'][data-part='label'],
+[data-scope='password-input'][data-part='label'] {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding: 9px 13px 1px;
+	color: var(--color-text-hint);
+	font-size: var(--text-sm);
+	font-weight: 700;
+	line-height: 13px;
+	cursor: default;
+	transition: color var(--speed);
+}
+
+/* The label darkens with focus, which is the only cue the field gives. */
+[data-scope='field'][data-part='root']:focus-within [data-part='label'],
+[data-scope='password-input'][data-part='root']:focus-within [data-part='label'] {
+	color: var(--color-text);
+}
+
+[data-scope='field'][data-part='required-indicator'] {
+	color: var(--color-danger);
+	font-size: var(--text-base);
+	line-height: 1;
+}
+
+[data-scope='field'][data-part='input'],
+[data-scope='password-input'][data-part='input'] {
+	width: 100%;
+	padding: 10px 13px;
+	border: none;
+	border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+	background: transparent;
+	color: var(--color-text);
+	font-family: var(--font-sans);
+	font-size: var(--text-base);
+	/* 18.5 + 10 + 10 of padding is PocketBase's 38.5px value row. Setting it
+	   here rather than leaving it to the font keeps the height the same
+	   whichever font is actually available. */
+	line-height: 18.5px;
+}
+
+[data-scope='field'][data-part='input']:focus,
+[data-scope='field'][data-part='input']:focus-visible,
+[data-scope='password-input'][data-part='input']:focus,
+[data-scope='password-input'][data-part='input']:focus-visible {
+	outline: none;
+}
+
+[data-scope='field'][data-part='input']::placeholder,
+[data-scope='password-input'][data-part='input']::placeholder {
+	color: var(--color-text-disabled);
+}
+
+[data-scope='field'][data-part='root'][data-disabled],
+[data-scope='password-input'][data-part='root'][data-disabled] {
+	opacity: 0.6;
+}
+
+[data-scope='field'][data-part='input'][data-disabled],
+[data-scope='password-input'][data-part='input'][data-disabled] {
+	cursor: not-allowed;
+}
+
+[data-scope='field'][data-part='root'][data-invalid] {
+	background: var(--surface-danger);
+}
+
+[data-scope='field'][data-part='error-text'] {
+	padding: 0 13px 9px;
+	color: var(--color-danger);
+	font-size: var(--text-sm);
+}
+
+[data-scope='field'][data-part='helper-text'] {
+	padding: 0 13px 9px;
+	color: var(--color-text-hint);
+	font-size: var(--text-sm);
+}
+
+/* The password field keeps its show/hide button inside the block, level with
+   the value rather than the label. */
+
+[data-scope='password-input'][data-part='control'] {
+	display: block;
+}
+
+[data-scope='password-input'][data-part='input'] {
+	padding-right: 45px;
+}
+
+[data-scope='password-input'][data-part='visibility-trigger'] {
+	position: absolute;
+	right: 8px;
+	bottom: 4px;
+	display: grid;
+	place-items: center;
+	width: 32px;
+	height: 32px;
+	border: none;
+	border-radius: var(--radius-sm);
+	background: transparent;
+	color: var(--color-text-hint);
+	cursor: pointer;
+	transition:
+		background-color var(--speed-fast),
+		color var(--speed-fast);
+}
+
+[data-scope='password-input'][data-part='visibility-trigger']:hover {
+	background: color-mix(in srgb, var(--color-text), transparent 88%);
+	color: var(--color-text);
+}
