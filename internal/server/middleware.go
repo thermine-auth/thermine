@@ -1,64 +1,47 @@
 package server
 
 import (
-	"crypto/rand"
-	"encoding/hex"
+	"log/slog"
 	"net/http"
 	"slices"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
-const requestIDHeader = "X-Request-ID"
-
-const requestIDKey = "request_id"
-
-func RequestID() gin.HandlerFunc {
+// RequestLogger logs one line per request, after it has been handled.
+func RequestLogger(log *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		id := c.GetHeader(requestIDHeader)
-		if id == "" {
-			id = newRequestID()
-		}
+		start := time.Now()
 
-		c.Set(requestIDKey, id)
-		c.Header(requestIDHeader, id)
-
+		// Hand the request to the next middleware and the route handler.
 		c.Next()
+
+		log.Info("request",
+			"method", c.Request.Method,
+			"path", c.Request.URL.Path,
+			"status", c.Writer.Status(),
+			"duration", time.Since(start).String(),
+			"ip", c.ClientIP(),
+		)
 	}
 }
 
-func RequestIDFrom(c *gin.Context) string {
-	id, _ := c.Get(requestIDKey)
-	s, _ := id.(string)
-	return s
-}
-
-func SecurityHeaders() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		h := c.Writer.Header()
-		h.Set("X-Content-Type-Options", "nosniff")
-		h.Set("X-Frame-Options", "DENY")
-		h.Set("Referrer-Policy", "no-referrer")
-
-		c.Next()
-	}
-}
-
+// CORS lets the listed browser origins call the API, and answers the browser's
+// preflight request itself. Origins are compared exactly.
 func CORS(origins []string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		origin := c.GetHeader("Origin")
 
-		c.Writer.Header().Add("Vary", "Origin")
-
-		if origin != "" && slices.Contains(origins, origin) {
+		if slices.Contains(origins, origin) {
 			h := c.Writer.Header()
 			h.Set("Access-Control-Allow-Origin", origin)
 			h.Set("Access-Control-Allow-Credentials", "true")
 			h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-			h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, "+requestIDHeader)
-			h.Set("Access-Control-Max-Age", "600")
+			h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 		}
 
+		// A preflight is answered here and never reaches a route.
 		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(http.StatusNoContent)
 			return
@@ -66,10 +49,4 @@ func CORS(origins []string) gin.HandlerFunc {
 
 		c.Next()
 	}
-}
-
-func newRequestID() string {
-	var b [16]byte
-	_, _ = rand.Read(b[:])
-	return hex.EncodeToString(b[:])
 }

@@ -1,0 +1,55 @@
+// Command migrate applies and rolls back database migrations.
+//
+// The migrations are Go functions, so they only exist in a binary that
+// imports them: the goose command-line tool cannot run them, this can.
+//
+//	go run ./cmd/migrate up       apply everything pending
+//	go run ./cmd/migrate down     roll the newest one back
+//	go run ./cmd/migrate status   show what has run
+package main
+
+import (
+	"fmt"
+	"log/slog"
+	"os"
+
+	"xermess/internal/config"
+	"xermess/internal/database"
+)
+
+func main() {
+	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	if err := run(log); err != nil {
+		log.Error("fatal", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run(log *slog.Logger) error {
+	if len(os.Args) != 2 {
+		return fmt.Errorf("usage: %s up|down|status", os.Args[0])
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+
+	db, err := database.Open(cfg.DB)
+	if err != nil {
+		return err
+	}
+	defer database.Close(db)
+
+	switch command := os.Args[1]; command {
+	case "up":
+		return database.Migrate(db, cfg.DB, log)
+	case "down":
+		return database.MigrateDown(db, cfg.DB, log)
+	case "status":
+		return database.MigrateStatus(db, cfg.DB)
+	default:
+		return fmt.Errorf("unknown command %q: want up, down or status", command)
+	}
+}

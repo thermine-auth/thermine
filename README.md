@@ -7,12 +7,13 @@ An authentication server written in Go, with a SvelteKit web frontend.
 ## Requirements
 
 - Go 1.27+
-- [Bun](https://bun.sh) (for the `web/` frontend)
+- PostgreSQL 14+
+- [Bun](https://bun.sh) — for the `web/` frontend
 
 ## Getting started
 
 ```sh
-cp .env.example .env
+make setup   # creates .env from .env.example
 make run
 ```
 
@@ -32,63 +33,113 @@ make web-dev
 
 ## Make targets
 
-| Target         | Description                     |
-| -------------- | ------------------------------- |
-| `build`        | Build the server into `bin/`    |
-| `run`          | Run the server                  |
-| `test`         | Run Go tests                    |
-| `fmt`          | Format Go code                  |
-| `vet`          | Run `go vet`                    |
-| `tidy`         | Tidy `go.mod`                   |
-| `web-install`  | Install frontend dependencies   |
-| `web-dev`      | Run the frontend dev server     |
-| `web-build`    | Build the frontend              |
-| `clean`        | Remove build artifacts          |
+Run `make` on its own for the full list, grouped by what it is for:
 
-Run `make` on its own to list them.
+| Group       | Targets                                                              |
+| ----------- | -------------------------------------------------------------------- |
+| Development | `run`, `build`, `clean`                                              |
+| Quality     | `check` (fmt + vet + test), `fmt`, `vet`, `test`, `tidy`             |
+| Database    | `migrate-diff name=x`, `migrate-apply`, `migrate-status`, `migrate-hash`, `migrate-lint` |
+| Frontend    | `web-install`, `web-dev`, `web-build`                                |
+| Setup       | `setup` (create `.env`), `tools`                                     |
 
 ## Layout
 
 ```
-cmd/xermess/        server entrypoint
-internal/config/    environment configuration
-internal/server/    engine setup (server.go) and the route table (routes.go)
-internal/handler/   one file per resource: health.go, auth.go
-web/                SvelteKit frontend
+cmd/xermess/main.go            startup, in order, in one function
+cmd/migrate/main.go            runs migrations by hand: up, down, status
+
+internal/config/config.go      reads .env
+internal/database/database.go  opens the connection
+internal/database/migrate.go   applies migrations
+internal/server/server.go      the server: middleware, routes, handlers
+internal/server/middleware.go  request logging and CORS
+internal/model/                one file per table, listed in model.All
+
+migrations/                    one Go file per migration, applied in order
+web/                           SvelteKit frontend
 ```
 
-Adding an endpoint is two steps: write the method on a handler in
-`internal/handler/`, then mount it in `registerRoutes` in
-`internal/server/routes.go`.
+Four packages, each with one job: `config` reads settings, `database` talks to
+Postgres, `model` describes the tables, `server` answers requests. Nothing
+imports `server` except `main`, and `model` imports nothing of ours at all.
+
+Startup is `run` in `cmd/xermess/main.go`, top to bottom: read the
+configuration, open the database, apply migrations, serve.
+
+The server is Gin with its defaults: `server.New` builds the engine and
+`engine.Run(addr)` listens. Ctrl-C stops the process immediately, so a request
+being handled at that moment is cut off — fine in development, worth revisiting
+before this runs for real.
 
 ## API
 
-| Method | Path                    | Description                     |
-| ------ | ----------------------- | ------------------------------- |
-| `GET`  | `/healthz`              | Liveness check                  |
-| `GET`  | `/readyz`               | Readiness check                 |
-| `POST` | `/api/v1/auth/register` | Create an account               |
-| `POST` | `/api/v1/auth/login`    | Exchange credentials for tokens |
-| `POST` | `/api/v1/auth/refresh`  | Exchange a refresh token        |
-| `POST` | `/api/v1/auth/logout`   | Revoke the current session      |
-| `GET`  | `/api/v1/auth/me`       | The authenticated account       |
+| Method | Path            | Description        |
+| ------ | --------------- | ------------------ |
+| `GET`  | `/healthz`      | The server is up   |
+| `GET`  | `/api/v1/hello` | Placeholder        |
 
-The `/auth` routes validate their request bodies but return `501
-Not Implemented` — the logic is not written yet.
+To add an endpoint: mount it in `registerRoutes` and write its handler below,
+both in `internal/server/server.go`.
 
-Errors all use one envelope:
+## Database
 
-```json
-{ "error": { "code": "invalid_request", "message": "..." } }
+Migrations are Go files in `migrations/`, run by
+[goose](https://github.com/pressly/goose). The server applies pending ones on
+start unless `XERMESS_DB_MIGRATE=false`.
+
+```sh
+make migrate-new name=add_admin_phone   # create an empty migration
+make migrate-up                         # apply pending
+make migrate-status                     # what is applied
+make migrate-down                       # roll the newest one back
 ```
+
+A migration registers itself with goose and gets the transaction goose opened.
+`gormTx` wraps that transaction in GORM, so a migration can work with the model
+structs instead of writing DDL by hand:
+
+```go
+func init() {
+	goose.AddMigrationContext(upAddAdminPhone, downAddAdminPhone)
+}
+
+func upAddAdminPhone(_ context.Context, tx *sql.Tx) error {
+	db, err := gormTx(tx)
+	if err != nil {
+		return err
+	}
+	return db.Migrator().AddColumn(&model.AdminUser{}, "Phone")
+}
+
+func downAddAdminPhone(_ context.Context, tx *sql.Tx) error {
+	db, err := gormTx(tx)
+	if err != nil {
+		return err
+	}
+	return db.Migrator().DropColumn(&model.AdminUser{}, "Phone")
+}
+```
+
+Everything a migration does runs inside goose's transaction, so one that fails
+half way leaves nothing behind. Write the down function even when you think you
+will not need it: it is what makes a bad deploy recoverable.
+
+Because the migrations are Go, the `goose` command-line tool cannot run them —
+only a binary that imports them can. That is what `cmd/migrate` is for, and
+what the make targets above use.
+
+Never edit a migration that has already run anywhere. Add a new one.
 
 ## Configuration
 
-Configuration comes from the environment. See `.env.example`.
+Every setting is an environment variable, read from `.env` first; real
+environment variables win. `.env.example` lists all of them. `XERMESS_DB_DSN`
+has no default, so a missing one stops the server.
 
-| Variable       | Default | Description                       |
-| -------------- | ------- | --------------------------------- |
-| `XERMESS_ADDR` | `:8080` | Address the server listens on     |
+The `migrations/` directory has to ship with the binary: goose reads the file
+names from disk, at the path in `XERMESS_DB_MIGRATE_DIR`, and matches them to
+the functions compiled in.
 
 ## License
 
