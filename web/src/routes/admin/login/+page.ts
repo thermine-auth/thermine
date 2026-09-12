@@ -11,5 +11,5 @@ export const load: PageLoad = async ({ fetch }) => {
 		return {};
 	}
 
-	redirect(307, resolve('/admin/overview'));
+	redirect(307, resolve('/admin/dashboard'));
 };

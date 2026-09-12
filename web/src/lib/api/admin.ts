@@ -1,5 +1,5 @@
 import { api, type Fetch } from './client';
-import type { Admin, AdminSession, Overview } from './types';
+import type { Admin, AdminSession, LogEntry, Overview } from './types';
 
 /** Every call the admin panel makes. */
 export const adminApi = {
@@ -12,5 +12,8 @@ export const adminApi = {
 
 	overview: (fetcher?: Fetch) => api.get<Overview>('/admin/overview', fetcher),
 
-	sessions: (fetcher?: Fetch) => api.get<{ sessions: AdminSession[] }>('/admin/sessions', fetcher)
+	sessions: (fetcher?: Fetch) => api.get<{ sessions: AdminSession[] }>('/admin/sessions', fetcher),
+
+	logs: (limit = 50, fetcher?: Fetch) =>
+		api.get<{ logs: LogEntry[] }>(`/admin/logs?limit=${limit}`, fetcher)
 };

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -144,6 +145,42 @@ func (h *admin) overview(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"counts": counts, "activity": activity})
+}
+
+// logs lists the activity log, newest first. The page size is capped so a
+// caller cannot ask for the whole table.
+func (h *admin) logs(c *gin.Context) {
+	const defaultLimit, maxLimit = 50, 200
+
+	limit := defaultLimit
+	if raw := c.Query("limit"); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			limit = min(parsed, maxLimit)
+		}
+	}
+
+	var events []model.AuditLog
+	if err := h.db.WithContext(c.Request.Context()).
+		Order("created_at DESC").Limit(limit).Find(&events).Error; err != nil {
+		h.log.Error("listing logs failed", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "something went wrong"})
+		return
+	}
+
+	out := make([]gin.H, 0, len(events))
+	for _, event := range events {
+		out = append(out, gin.H{
+			"id":          event.ID.String(),
+			"action":      event.Action,
+			"actor":       event.ActorEmail,
+			"ip":          event.IP,
+			"user_agent":  event.UserAgent,
+			"target_type": event.TargetType,
+			"created_at":  event.CreatedAt,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"logs": out})
 }
 
 // sessions lists the caller's own sessions, so they can see where they are

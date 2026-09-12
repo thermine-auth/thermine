@@ -31,9 +31,13 @@
 	--space-5: 30px;
 	--space-6: 40px;
 
-	/* Controls */
+	/* Layout */
 	--control-height: 45px;
 	--header-height: 55px;
+	/* How wide a column of content is allowed to get. Past this, lines get
+	   hard to scan and tables get sparse. */
+	--content-width: 72rem;
+	--sidebar-width: 15rem;
 
 	/* Motion */
 	--speed-fast: 70ms;

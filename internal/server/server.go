@@ -55,6 +55,7 @@ func registerRoutes(r *gin.Engine, h *admin) {
 			signedIn.POST("/auth/logout", h.logout)
 			signedIn.GET("/me", h.me)
 			signedIn.GET("/overview", h.overview)
+			signedIn.GET("/logs", h.logs)
 			signedIn.GET("/sessions", h.sessions)
 		}
 	}

@@ -37,12 +37,12 @@
 <DataTable
 	rows={events}
 	empty="Nothing has happened yet."
-	columns="minmax(9rem, 1fr) minmax(5rem, 1fr) minmax(6rem, 1fr) auto"
+	columns="minmax(11rem, 1.2fr) minmax(5rem, 1fr) minmax(6rem, 1fr) auto"
 >
 	{#snippet row(event)}
 		<span class="action" class:failure={isFailure(event.action)}>
 			<Icon icon={iconFor(event.action)} />
-			{event.action}
+			<span class="name">{event.action}</span>
 		</span>
 		<span class="muted">{event.actor || '—'}</span>
 		<span class="muted mono">{event.ip}</span>
@@ -58,6 +58,12 @@
 		font-family: var(--font-mono);
 		font-size: var(--text-sm);
 		font-weight: 500;
+	}
+
+	.name {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.failure {

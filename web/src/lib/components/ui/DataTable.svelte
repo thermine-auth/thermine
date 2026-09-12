@@ -43,6 +43,13 @@
 		border-top: 1px solid var(--color-border);
 	}
 
+	/* Grid items default to min-width:auto, so a long value refuses to shrink
+	   and spills into the next column. The cells come from a snippet, hence
+	   the global match. */
+	.row > :global(*) {
+		min-width: 0;
+	}
+
 	.empty {
 		padding: var(--space-5) var(--space-4);
 		color: var(--color-text-hint);

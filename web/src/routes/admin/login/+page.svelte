@@ -32,7 +32,7 @@
 
 			// The session changed, so anything already loaded is stale.
 			await invalidateAll();
-			await goto(resolve('/admin/overview'), { replaceState: true });
+			await goto(resolve('/admin/dashboard'), { replaceState: true });
 		} catch (err) {
 			error = err instanceof ApiError ? err.message : 'Something went wrong';
 			password = '';

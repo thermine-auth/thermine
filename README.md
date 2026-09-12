@@ -66,7 +66,8 @@ web/src/lib/components/admin/  the panel's own pieces: header, tables, stats
 web/src/lib/styles/            fonts.css, tokens.css, base.css, ark.css
 web/src/lib/theme.svelte.ts    the light/dark/auto choice
 web/src/routes/admin/login/    the sign-in page
-web/src/routes/admin/(panel)/  everything that needs a session
+web/src/routes/admin/(panel)/  dashboard, logs, settings — everything behind a session
+web/src/lib/demo.ts            placeholder rows for the sections with no backend
 ```
 
 Four packages, each with one job: `config` reads settings, `database` talks to
@@ -91,6 +92,7 @@ before this runs for real.
 | `POST` | `/api/v1/admin/auth/logout`   | yes             | Sign out, revokes the session  |
 | `GET`  | `/api/v1/admin/me`            | yes             | The signed-in administrator    |
 | `GET`  | `/api/v1/admin/overview`      | yes             | Counts and recent activity     |
+| `GET`  | `/api/v1/admin/logs`          | yes             | The activity log (`?limit=`)   |
 | `GET`  | `/api/v1/admin/sessions`      | yes             | The caller's own sessions      |
 
 Sessions are a random token in an HttpOnly cookie; the database keeps only a
@@ -113,7 +115,13 @@ make web-dev      # the panel, on :5173
 
 Then open http://localhost:5173/admin/login and sign in with
 `XERMESS_ADMIN_USERNAME` and `XERMESS_ADMIN_PASSWORD`. Signing in leads to
-`/admin/overview`.
+`/admin/dashboard`.
+
+The header carries the three top-level sections — Dashboard, Logs, Settings —
+and the dashboard has its own sidebar for what sits under it. Its Overview
+page is real; Administrators, Roles, API keys and Webhooks render the
+placeholder rows in `lib/demo.ts` and are marked as such in the interface.
+Delete a block from that file as soon as its section talks to the API.
 
 The panel runs in the browser (`ssr = false`): it talks to the API on its own
 origin with the session cookie, which is why `XERMESS_CORS_ORIGINS` has to
@@ -129,6 +137,12 @@ parallel, and reload them on `invalidateAll()` after signing in or out.
 `lib/components/admin` the pieces only this panel uses. Pages compose those
 and never reach for an Ark UI primitive directly, so a change to how a field
 looks happens in one file.
+
+**Layout.** Pages sit in a centred column capped at `--content-width`
+(72rem); the dashboard takes the full width for its sidebar and centres its
+own column beside it. Below 55rem the sidebar becomes a scrollable row above
+the content, and below 30rem the header sections become their icons alone —
+their labels stay in the accessible name.
 
 **Styling.** [Ark UI](https://ark-ui.com) ships no CSS: every part it renders
 carries `data-scope` and `data-part`, and `lib/styles/ark.css` styles those

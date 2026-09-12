@@ -19,6 +19,11 @@ export type ActivityEvent = {
 	created_at: string;
 };
 
+export type LogEntry = ActivityEvent & {
+	user_agent: string;
+	target_type: string;
+};
+
 export type Overview = {
 	counts: {
 		admins: number;
