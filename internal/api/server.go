@@ -23,6 +23,7 @@ import (
 	"xermess/internal/api/http/fields"
 	"xermess/internal/api/http/middleware"
 	"xermess/internal/api/http/session"
+	"xermess/internal/api/http/setup"
 	"xermess/internal/api/http/users"
 	"xermess/internal/auth"
 	"xermess/internal/config"
@@ -51,6 +52,7 @@ func New(cfg config.Config, st *store.Store, log *slog.Logger) *gin.Engine {
 
 	registerRoutes(r, service, handlers{
 		auth:     apiauth.New(service, st, log, secureCookies),
+		setup:    setup.New(st, log),
 		users:    users.New(st, recorder, log),
 		fields:   fields.New(st, recorder, log),
 		activity: activity.New(st, log),
@@ -62,6 +64,7 @@ func New(cfg config.Config, st *store.Store, log *slog.Logger) *gin.Engine {
 // handlers is one of each, so the route table below reads as a table.
 type handlers struct {
 	auth     *apiauth.Handler
+	setup    *setup.Handler
 	users    *users.Handler
 	fields   *fields.Handler
 	activity *activity.Handler
@@ -76,7 +79,13 @@ func registerRoutes(r *gin.Engine, service *auth.Service, h handlers) {
 	{
 		v1.GET("/hello", hello)
 
-		// Signing in is the one admin route that cannot require a session.
+		// Setting the panel up and signing in are the routes that cannot
+		// require a session: before the first there is no account, and before
+		// the second no way to prove one. Creating an administrator is
+		// refused as soon as there is one, which is what keeps the first of
+		// those from being a way in.
+		v1.GET("/admin/setup", h.setup.Status)
+		v1.POST("/admin/setup", h.setup.Create)
 		v1.POST("/admin/auth/login", h.auth.Login)
 
 		signedIn := v1.Group("/admin", session.Require(service))

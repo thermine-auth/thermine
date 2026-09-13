@@ -155,6 +155,9 @@ func (h *Handler) build(c *gin.Context, req *userRequest, into *model.User) (*mo
 
 	user.Email = req.Email
 	user.EmailVerified = req.EmailVerified
+	user.FirstName = req.FirstName
+	user.LastName = req.LastName
+	user.IsActive = req.IsActive
 	user.Data = data
 
 	return user, nil
@@ -184,7 +187,10 @@ func (h *Handler) find(c *gin.Context) (*model.User, bool) {
 }
 
 // respondWrite turns a failed write into an answer, telling a duplicate email
-// apart from anything else because that one is the writer's to fix.
+// apart from anything else because that one is the writer's to fix. The
+// address is the only column of a user record that has to be unique; an
+// additional field that has to be is checked before the write, in
+// validation.go.
 func (h *Handler) respondWrite(c *gin.Context, err error, note string) {
 	if errors.Is(err, store.ErrDuplicate) {
 		respond.Conflict(c, "a user with that email already exists")

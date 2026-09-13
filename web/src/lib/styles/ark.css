@@ -189,61 +189,7 @@
 
 /* Switches, used for boolean fields. */
 
-/* Icon buttons and their tooltips.
-
-   PocketBase draws these as circles with nothing behind them until they are
-   hovered, at the same height as the other controls on the page: 45px for a
-   page's own tools, 35px for the ones inside a table row. The class comes
-   from IconButton.svelte. */
-
-.icon-button {
-	display: inline-grid;
-	place-items: center;
-	flex: none;
-	border: none;
-	border-radius: 50%;
-	background: transparent;
-	color: var(--color-text-hint);
-	cursor: pointer;
-	transition:
-		background-color var(--speed),
-		color var(--speed);
-}
-
-.icon-button.md {
-	width: var(--control-height);
-	height: var(--control-height);
-}
-
-.icon-button.sm {
-	width: 35px;
-	height: 35px;
-}
-
-.icon-button:hover:not(:disabled) {
-	background: var(--color-secondary);
-	color: var(--color-text);
-}
-
-.icon-button.danger:hover:not(:disabled) {
-	background: var(--surface-danger);
-	color: var(--color-danger);
-}
-
-.icon-button:disabled {
-	cursor: not-allowed;
-	opacity: 0.6;
-}
-
-.icon-button.spinning svg {
-	animation: icon-spin 700ms linear infinite;
-}
-
-@keyframes icon-spin {
-	to {
-		transform: rotate(360deg);
-	}
-}
+/* Tooltips, shown by IconButton and by a folded sidebar. */
 
 [data-scope='tooltip'][data-part='positioner'] {
 	z-index: 60;
@@ -273,10 +219,53 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.icon-button.spinning svg,
 	[data-scope='tooltip'][data-part='content'][data-state='open'] {
 		animation: none;
 	}
+}
+
+/* The label and the value sit inside the filled block, and so does the line
+   under them. Ark renders these as spans, hence the display: an inline box
+   only pads its first line, which leaves the second sticking out of the
+   block. */
+[data-scope='field'][data-part='helper-text'],
+[data-scope='field'][data-part='error-text'] {
+	display: block;
+	padding: 2px 13px 9px;
+	font-size: var(--text-sm);
+	line-height: 1.3;
+}
+
+[data-scope='field'][data-part='helper-text'] {
+	color: var(--color-text-hint);
+}
+
+[data-scope='field'][data-part='error-text'] {
+	color: var(--color-danger);
+}
+
+/* An invalid field says so before anyone reads the line under it. */
+[data-scope='field'][data-part='input'][data-invalid],
+[data-scope='field'][data-part='textarea'][data-invalid] {
+	box-shadow: inset 0 0 0 1px var(--color-danger);
+}
+
+[data-scope='field'][data-part='textarea'] {
+	width: 100%;
+	padding: 9px 13px 13px;
+	border: none;
+	border-radius: var(--radius-sm);
+	background: var(--color-input);
+	color: var(--color-text);
+	font: inherit;
+	font-family: var(--font-sans);
+	font-size: var(--text-base);
+	resize: vertical;
+}
+
+[data-scope='field'][data-part='textarea']:focus-visible {
+	outline: none;
+	background: var(--color-input-focus);
 }
 
 /* A field nobody may edit — a record's id, say — is shown rather than hidden,
@@ -410,7 +399,7 @@
 }
 
 [data-scope='dialog'][data-part='backdrop'][data-state='closed'] {
-	animation: drawer-backdrop-in var(--speed-drawer) ease-in reverse;
+	animation: drawer-backdrop-in var(--speed-drawer) ease-in reverse forwards;
 }
 
 [data-scope='dialog'][data-part='positioner'] {
@@ -436,7 +425,21 @@
 }
 
 [data-scope='dialog'][data-part='content'][data-state='closed'] {
-	animation: drawer-in var(--speed-drawer) cubic-bezier(0.32, 0.72, 0, 1) reverse;
+	animation: drawer-in var(--speed-drawer) cubic-bezier(0.32, 0.72, 0, 1) reverse forwards;
+}
+
+/* A drawer on its way out takes no clicks, and neither does one that never
+   finished leaving.
+   
+   Ark removes a closed drawer when its exit animation ends — and an animation
+   in a background tab never starts, so a drawer closed just before switching
+   tabs can still be in the page on the way back. Its backdrop covers
+   everything, which would leave the panel looking fine and ignoring every
+   click. Saying so here costs nothing and cannot be forgotten. */
+[data-scope='dialog'][data-part='backdrop'][data-state='closed'],
+[data-scope='dialog'][data-part='positioner']:has([data-state='closed']),
+[data-scope='dialog'][data-part='content'][data-state='closed'] {
+	pointer-events: none;
 }
 
 [data-scope='dialog'][data-part='content']:focus-visible {
@@ -475,23 +478,294 @@
 	}
 }
 
-/* Select, used by the field type picker. */
+/* Select. Closed, it is the same filled block as an input — the label inside
+   it at the top, the value below — so a column of fields reads as one column
+   whatever kind of value each holds. Open, it is PocketBase's dropdown: a
+   card with a 2px border, 5px corners and rows that light up under the
+   pointer. Measured from their record panel — 5px of padding around the
+   list, rows of 10px/12px, #e4e8ec under the pointer. */
 
-[data-scope='field'][data-part='select'] {
-	width: 100%;
-	height: var(--control-height);
-	padding: 0 13px;
-	border: none;
+[data-scope='select'][data-part='root'] {
+	position: relative;
+	display: block;
 	border-radius: var(--radius-sm);
 	background: var(--color-input);
+	transition: background-color var(--speed);
+}
+
+/* Pointed at, or open: the block darkens. That and the label are the only
+   cues it gives, the same as every other field. */
+[data-scope='select'][data-part='root']:hover,
+[data-scope='select'][data-part='root']:has([data-part='trigger']:focus-visible),
+[data-scope='select'][data-part='root']:has([data-part='trigger'][data-state='open']) {
+	background: var(--color-input-focus);
+}
+
+[data-scope='select'][data-part='root'][data-disabled] {
+	opacity: 0.6;
+}
+
+[data-scope='select'][data-part='root'][data-invalid] {
+	background: var(--surface-danger);
+}
+
+[data-scope='select'][data-part='label'] {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding: 9px 13px 1px;
+	color: var(--color-text-hint);
+	font-size: var(--text-sm);
+	font-weight: 700;
+	line-height: 13px;
+	cursor: default;
+	transition: color var(--speed);
+}
+
+[data-scope='select'][data-part='root']:has([data-part='trigger']:focus-visible)
+	[data-part='label'],
+[data-scope='select'][data-part='root']:has([data-part='trigger'][data-state='open'])
+	[data-part='label'] {
 	color: var(--color-text);
-	font: inherit;
+}
+
+[data-scope='select'][data-part='label'] [data-part='required-indicator'] {
+	color: var(--color-danger);
+	font-size: var(--text-base);
+	line-height: 1;
+}
+
+[data-scope='select'][data-part='control'] {
+	position: relative;
+	display: block;
+}
+
+[data-scope='select'][data-part='trigger'] {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	width: 100%;
+	/* The same 18.5px line inside 10px of padding as an input, so a select
+	   and a text field next to each other are the same height. */
+	padding: 10px 13px;
+	border: none;
+	border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+	background: transparent;
+	color: var(--color-text);
 	font-family: var(--font-sans);
 	font-size: var(--text-base);
+	line-height: 18.5px;
+	text-align: left;
 	cursor: pointer;
 }
 
-[data-scope='field'][data-part='select']:focus-visible {
+[data-scope='select'][data-part='trigger']:focus-visible {
 	outline: none;
-	background: var(--color-input-focus);
+}
+
+[data-scope='select'][data-part='trigger'][data-disabled] {
+	cursor: not-allowed;
+}
+
+/* Nobody may change this one. It is shown rather than hidden, but it reads
+   as a value: no chevron to press, and no block darkening under the pointer
+   to suggest there is anything to press. */
+[data-scope='select'][data-part='trigger'][data-readonly] {
+	color: var(--color-text-hint);
+	cursor: default;
+}
+
+[data-scope='select'][data-part='indicator'][data-readonly] {
+	display: none;
+}
+
+[data-scope='select'][data-part='root']:has([data-part='trigger'][data-readonly]):hover {
+	background: var(--color-input);
+}
+
+[data-scope='select'][data-part='value-text'] {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+/* Nothing chosen yet: the placeholder reads as absence, not as a value. */
+[data-scope='select'][data-part='trigger'][data-placeholder-shown] [data-part='value-text'] {
+	color: var(--color-text-disabled);
+}
+
+[data-scope='select'][data-part='indicator'] {
+	display: flex;
+	color: var(--color-text-hint);
+	transition: transform var(--speed);
+}
+
+/* The chevron points at the panel: down at one about to open, up at one that
+   is. */
+[data-scope='select'][data-part='indicator'][data-state='open'] {
+	transform: rotate(180deg);
+}
+
+/* The clear button sits level with the value, left of the chevron. It is a
+   sibling of the trigger rather than a child: a button inside a button is
+   not something a browser will accept. */
+[data-scope='select'][data-part='clear-trigger'] {
+	position: absolute;
+	right: 34px;
+	bottom: 7px;
+	display: grid;
+	place-items: center;
+	width: 24px;
+	height: 24px;
+	border: none;
+	border-radius: var(--radius-sm);
+	background: transparent;
+	color: var(--color-text-hint);
+	cursor: pointer;
+	transition:
+		background-color var(--speed-fast),
+		color var(--speed-fast);
+}
+
+[data-scope='select'][data-part='clear-trigger']:hover {
+	background: color-mix(in srgb, var(--color-text), transparent 88%);
+	color: var(--color-text);
+}
+
+/* The panel. */
+
+[data-scope='select'][data-part='content'] {
+	/* It is portalled to the end of the document, so it has to name the layer
+	   it sits on: above the drawer (50) it is nearly always opened from. Zag
+	   copies this value onto the positioner that wraps it — the positioner's
+	   own z-index is written inline and cannot be styled from here. */
+	z-index: 70;
+	max-height: 330px;
+	padding: var(--space-1);
+	overflow-y: auto;
+	border: 2px solid var(--color-input-focus);
+	border-radius: var(--radius-sm);
+	background: var(--color-surface);
+	box-shadow: var(--shadow-md);
+}
+
+[data-scope='select'][data-part='content']:focus-visible {
+	outline: none;
+}
+
+[data-scope='select'][data-part='content'][data-state='open'] {
+	animation: select-in var(--speed) ease-out;
+}
+
+@keyframes select-in {
+	from {
+		opacity: 0;
+		transform: translateY(-3px);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	[data-scope='select'][data-part='content'][data-state='open'] {
+		animation: none;
+	}
+}
+
+[data-scope='select'][data-part='list']:focus-visible {
+	outline: none;
+}
+
+[data-scope='select'][data-part='item'] {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: 10px 12px;
+	border-radius: var(--radius-sm);
+	color: var(--color-text);
+	font-size: var(--text-base);
+	line-height: 16px;
+	cursor: pointer;
+	user-select: none;
+	transition: background-color var(--speed-fast);
+}
+
+/* One highlight, whether it was reached with the pointer or with the arrow
+   keys: Ark marks both as highlighted, so the list never shows two. */
+[data-scope='select'][data-part='item'][data-highlighted] {
+	background: var(--color-secondary);
+	outline: none;
+}
+
+[data-scope='select'][data-part='item'][data-disabled] {
+	color: var(--color-text-disabled);
+	cursor: not-allowed;
+}
+
+[data-scope='select'][data-part='item'][data-disabled][data-highlighted] {
+	background: transparent;
+}
+
+/* Stands in for the icon an option does not have, so its label starts where
+   the others do. */
+[data-scope='select'][data-part='item'] [data-part='item-gutter'] {
+	width: 1rem;
+}
+
+[data-scope='select'][data-part='item'] [data-part='item-body'] {
+	display: flex;
+	flex: 1;
+	min-width: 0;
+	flex-direction: column;
+	gap: 2px;
+}
+
+[data-scope='select'][data-part='item-text'] {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+[data-scope='select'][data-part='item'][data-state='checked'] [data-part='item-text'] {
+	font-weight: 600;
+}
+
+[data-scope='select'][data-part='item'] [data-part='item-description'] {
+	color: var(--color-text-hint);
+	font-size: var(--text-sm);
+	line-height: 1.3;
+}
+
+/* The tick marks what is already chosen. Ark hides it with the hidden
+   attribute on every other row, so it must not be given a display of its own
+   — that would show a tick against all of them. */
+[data-scope='select'][data-part='item-indicator'] {
+	color: var(--color-success);
+	line-height: 0;
+}
+
+[data-scope='select'][data-part='list'] [data-part='empty'] {
+	margin: 0;
+	padding: 10px 12px;
+	color: var(--color-text-hint);
+	font-size: var(--text-sm);
+	text-align: center;
+}
+
+/* The line under the control, inside the block, the same as a field's. */
+
+[data-scope='select'][data-part='root'] > [data-part='helper-text'],
+[data-scope='select'][data-part='root'] > [data-part='error-text'] {
+	display: block;
+	padding: 2px 13px 9px;
+	font-size: var(--text-sm);
+	line-height: 1.3;
+}
+
+[data-scope='select'][data-part='root'] > [data-part='helper-text'] {
+	color: var(--color-text-hint);
+}
+
+[data-scope='select'][data-part='root'] > [data-part='error-text'] {
+	color: var(--color-danger);
 }

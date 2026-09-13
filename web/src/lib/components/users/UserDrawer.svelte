@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
-	import { Switch } from '@ark-ui/svelte/switch';
-	import { Field } from '@ark-ui/svelte/field';
+	import { createMutation, useQueryClient } from '@tanstack/svelte-query';
 	import { RiKey2Line, RiMailLine } from 'svelte-remixicon';
 	import { ApiError, usersApi, type UserField, type UserRecord } from '$lib/api';
-	import { Alert, Button, Drawer, Icon } from '$lib/components/ui';
+	import { Alert, Button, Drawer, Input, Switch } from '$lib/components/ui';
+	import { keys } from '$lib/query';
+	import { additional } from './fields';
 	import FieldInput from './FieldInput.svelte';
 
 	type Props = {
@@ -16,19 +16,30 @@
 
 	let { user, fields, open = $bindable(false) }: Props = $props();
 
+	const queryClient = useQueryClient();
+
+	// The built-in fields are the record's own columns, so they are named
+	// here; the additional ones are whatever this organisation added.
 	let email = $state('');
 	let emailVerified = $state(false);
+	let firstName = $state('');
+	let lastName = $state('');
+	let isActive = $state(true);
+
 	let values = $state<Record<string, string | boolean>>({});
 	let error = $state('');
+
+	/** True while the record is being written. Ours rather than the
+	    mutation's own isPending, so a form cannot be left saying "Saving…". */
 	let saving = $state(false);
 
 	const editing = $derived(user !== null);
 
-	/** The record's own fields are grouped: the ones that hold a value, then
-	    the flags, which read as a list of yes-or-no answers rather than as
-	    inputs someone has to fill in. */
-	const details = $derived(fields.filter((field) => field.type !== 'bool'));
-	const flags = $derived(fields.filter((field) => field.type === 'bool'));
+	/** The added fields, split the way they are filled in: values first, then
+	    the yes-or-no answers. */
+	const extras = $derived(additional(fields));
+	const details = $derived(extras.filter((field) => field.type !== 'bool'));
+	const flags = $derived(extras.filter((field) => field.type === 'bool'));
 
 	/** Fill the form whenever the drawer is opened for a different user.
 	    Dates are stored as timestamps and edited as days. */
@@ -37,10 +48,13 @@
 
 		email = user?.email ?? '';
 		emailVerified = user?.email_verified ?? false;
+		firstName = user?.first_name ?? '';
+		lastName = user?.last_name ?? '';
+		isActive = user?.is_active ?? true;
 		error = '';
 
 		values = Object.fromEntries(
-			fields.map((field) => {
+			extras.map((field) => {
 				const stored = user?.data?.[field.name];
 
 				if (field.type === 'bool') return [field.name, stored === true];
@@ -55,7 +69,7 @@
 	function payload() {
 		const data: Record<string, unknown> = {};
 
-		for (const field of fields) {
+		for (const field of extras) {
 			const value = values[field.name];
 
 			if (field.type === 'bool') {
@@ -65,33 +79,47 @@
 			}
 		}
 
-		return { email: email.trim(), email_verified: emailVerified, data };
+		return {
+			email: email.trim(),
+			email_verified: emailVerified,
+			first_name: firstName.trim(),
+			last_name: lastName.trim(),
+			is_active: isActive,
+			data
+		};
 	}
 
-	async function save(event: SubmitEvent) {
+	/** Writing the record. Whether that is a new one or an edit is the only
+	    difference; what happens afterwards — the list refilled, the panel
+	    closed — is the same either way. */
+	const save = createMutation(() => ({
+		mutationFn: () => (user ? usersApi.update(user.id, payload()) : usersApi.create(payload())),
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({ queryKey: keys.users.all });
+			open = false;
+		},
+		onError: (err: unknown) => {
+			error = err instanceof ApiError ? err.message : 'Could not save this user';
+		},
+		onSettled: () => {
+			saving = false;
+		}
+	}));
+
+	function submit(event: SubmitEvent) {
 		event.preventDefault();
+
+		// Enter and a double click both submit; one save at a time is enough,
+		// and two would race each other to write the same record.
+		if (saving) return;
 
 		error = '';
 		saving = true;
-
-		try {
-			if (user) {
-				await usersApi.update(user.id, payload());
-			} else {
-				await usersApi.create(payload());
-			}
-
-			await invalidateAll();
-			open = false;
-		} catch (err) {
-			error = err instanceof ApiError ? err.message : 'Could not save this user';
-		} finally {
-			saving = false;
-		}
+		save.mutate();
 	}
 </script>
 
-<Drawer bind:open title={editing ? 'Edit user record' : 'New user record'} onsubmit={save}>
+<Drawer bind:open title={editing ? 'Edit user record' : 'New user record'} onsubmit={submit}>
 	{#if error}
 		<div class="error"><Alert>{error}</Alert></div>
 	{/if}
@@ -103,43 +131,41 @@
 			<!-- The id is what every other system refers to this record by, so
 			     it is shown and can be copied, but it is not something to
 			     edit. -->
-			<Field.Root readOnly>
-				<Field.Label>
-					<Icon icon={RiKey2Line} />
-					id
-				</Field.Label>
-				<Field.Input value={user?.id ?? ''} readonly />
-			</Field.Root>
+			<Input label="id" icon={RiKey2Line} value={user?.id ?? ''} readOnly />
 		{/if}
 
-		<Field.Root required>
-			<Field.Label>
-				<Icon icon={RiMailLine} />
-				email
-				<Field.RequiredIndicator>*</Field.RequiredIndicator>
-			</Field.Label>
-			<Field.Input
-				value={email}
-				oninput={(event) => (email = event.currentTarget.value)}
-				type="email"
-				autocomplete="off"
-				placeholder="user@example.com"
-			/>
-		</Field.Root>
+		<Input
+			label="email"
+			icon={RiMailLine}
+			bind:value={email}
+			type="email"
+			autocomplete="off"
+			placeholder="user@example.com"
+			required
+		/>
 
-		<Switch.Root
-			checked={emailVerified}
-			onCheckedChange={(details) => (emailVerified = details.checked)}
-		>
-			<Switch.Control><Switch.Thumb /></Switch.Control>
-			<Switch.Label>email_verified</Switch.Label>
-			<Switch.HiddenInput />
-		</Switch.Root>
+		<div class="names">
+			<Input label="first_name" bind:value={firstName} />
+			<Input label="last_name" bind:value={lastName} />
+		</div>
+	</section>
+
+	<section>
+		<h3>Flags</h3>
+
+		<div class="flags">
+			<Switch label="email_verified" bind:checked={emailVerified} />
+			<Switch label="is_active" bind:checked={isActive} />
+
+			{#each flags as field (field.id)}
+				<FieldInput {field} bind:value={values[field.name]} />
+			{/each}
+		</div>
 	</section>
 
 	{#if details.length > 0}
 		<section>
-			<h3>Details</h3>
+			<h3>Additional fields</h3>
 
 			{#each details as field (field.id)}
 				<FieldInput {field} bind:value={values[field.name]} />
@@ -147,24 +173,12 @@
 		</section>
 	{/if}
 
-	{#if flags.length > 0}
-		<section>
-			<h3>Flags</h3>
-
-			<div class="flags">
-				{#each flags as field (field.id)}
-					<FieldInput {field} bind:value={values[field.name]} />
-				{/each}
-			</div>
-		</section>
-	{/if}
-
 	{#snippet footer()}
 		<span class="spacer"></span>
 
-		<Button variant="secondary" onclick={() => (open = false)} disabled={saving}>Cancel</Button>
+		<Button variant="subtle" onclick={() => (open = false)} disabled={saving}>Cancel</Button>
 
-		<Button type="submit" disabled={saving || email.trim() === ''}>
+		<Button type="submit" loading={saving} disabled={saving || email.trim() === ''}>
 			{saving ? 'Saving…' : editing ? 'Save changes' : 'Create user'}
 		</Button>
 	{/snippet}
@@ -196,6 +210,12 @@
 		text-transform: uppercase;
 	}
 
+	.names {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: var(--space-3);
+	}
+
 	/* Flags are short, so they sit two to a row where there is room rather
 	   than running down the panel one by one. */
 	.flags {
@@ -206,5 +226,11 @@
 
 	.spacer {
 		flex: 1;
+	}
+
+	@media (max-width: 30rem) {
+		.names {
+			grid-template-columns: 1fr;
+		}
 	}
 </style>

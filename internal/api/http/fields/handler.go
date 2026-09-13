@@ -71,7 +71,7 @@ func (h *Handler) Create(c *gin.Context) {
 
 	h.audit.Record(c, "user_field.created", targetType, field.Name)
 
-	c.JSON(http.StatusCreated, gin.H{"field": field})
+	c.JSON(http.StatusCreated, gin.H{"field": newFieldResponse(*field)})
 }
 
 // Update changes what a field expects. Its name and its type stay as they
@@ -101,7 +101,7 @@ func (h *Handler) Update(c *gin.Context) {
 
 	h.audit.Record(c, "user_field.updated", targetType, field.Name)
 
-	c.JSON(http.StatusOK, gin.H{"field": field})
+	c.JSON(http.StatusOK, gin.H{"field": newFieldResponse(*field)})
 }
 
 // Delete removes a field. The values already stored under its name stay in

@@ -8,12 +8,12 @@
 		RiShieldCheckLine,
 		RiUserSettingsLine
 	} from 'svelte-remixicon';
-	import SessionTable from '$lib/components/admin/SessionTable.svelte';
-	import ProfileSection from '$lib/components/admin/ProfileSection.svelte';
-	import SignOutButton from '$lib/components/admin/SignOutButton.svelte';
+	import SessionTable from '$lib/components/profile/SessionTable.svelte';
+	import ProfileSection from '$lib/components/profile/ProfileSection.svelte';
+	import SignOutButton from '$lib/components/profile/SignOutButton.svelte';
 	import { Badge, Button, Card } from '$lib/components/ui';
-	import { formatDateTime } from '$lib/format';
-	import { theme } from '$lib/theme.svelte';
+	import { formatDateTime } from '$lib/utils/format';
+	import { theme } from '$lib/state/theme.svelte';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -73,7 +73,7 @@
 				<strong>Not set up</strong>
 				<p class="hint">An authenticator app or a security key can be added here.</p>
 			</div>
-			<Button variant="secondary" disabled>Set up</Button>
+			<Button variant="subtle" disabled>Set up</Button>
 		</div>
 	</Card>
 </ProfileSection>
@@ -88,7 +88,10 @@
 			{#each ['light', 'dark'] as const as option (option)}
 				<button
 					type="button"
-					class="choice"
+					class="control choice"
+					data-size="md"
+					data-variant="outline"
+					data-palette="neutral"
 					class:selected={theme.current === option}
 					aria-pressed={theme.current === option}
 					onclick={() => theme.set(option)}
@@ -113,7 +116,7 @@
 				<strong>English</strong>
 				<p class="hint">Kyrgyz and Russian are translated but not offered here yet.</p>
 			</div>
-			<Button variant="secondary" disabled>Change</Button>
+			<Button variant="subtle" disabled>Change</Button>
 		</div>
 	</Card>
 </ProfileSection>
@@ -125,7 +128,7 @@
 				<strong>{data.admin.email}</strong>
 				<p class="hint">Changing this will ask for confirmation at the new address.</p>
 			</div>
-			<Button variant="secondary" disabled>Change</Button>
+			<Button variant="subtle" disabled>Change</Button>
 		</div>
 	</Card>
 </ProfileSection>
@@ -142,7 +145,7 @@
 				<strong>Set</strong>
 				<p class="hint">Changing it signs out every other session.</p>
 			</div>
-			<Button variant="secondary" disabled>Change</Button>
+			<Button variant="subtle" disabled>Change</Button>
 		</div>
 	</Card>
 </ProfileSection>
@@ -214,30 +217,10 @@
 		gap: var(--space-2);
 	}
 
-	.choice {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-		padding: var(--space-2) var(--space-3);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-md);
-		background: var(--color-surface);
-		color: var(--color-text);
-		font: inherit;
-		font-size: var(--text-base);
-		cursor: pointer;
-		transition:
-			border-color var(--speed-fast),
-			background-color var(--speed-fast);
-	}
-
-	.choice:hover {
-		background: var(--color-secondary);
-	}
-
+	/* The shape is the shared control; being the chosen one is this page's
+	   own business. */
 	.choice.selected {
 		border-color: var(--color-text);
-		font-weight: 600;
 	}
 
 	.swatch {

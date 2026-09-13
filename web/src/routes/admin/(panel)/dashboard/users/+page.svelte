@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { goto, invalidateAll } from '$app/navigation';
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { SvelteURLSearchParams } from 'svelte/reactivity';
@@ -11,7 +11,9 @@
 		RiSearchLine,
 		RiSettings3Line
 	} from 'svelte-remixicon';
+	import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 	import { ApiError, usersApi, type UserRecord } from '$lib/api';
+	import { keys, userFieldsOptions, usersOptions } from '$lib/query';
 	import { Alert, Button, Icon, IconButton, SelectionBar } from '$lib/components/ui';
 	import FieldsDrawer from '$lib/components/users/FieldsDrawer.svelte';
 	import UserDrawer from '$lib/components/users/UserDrawer.svelte';
@@ -19,6 +21,17 @@
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
+
+	const queryClient = useQueryClient();
+
+	// The list and the fields are queries, seeded with what the server has
+	// already rendered: the first paint costs no request, and everything
+	// after — a save, the refresh button, coming back to the tab — is the
+	// cache being refilled rather than the page being reloaded.
+	const users = createQuery(() =>
+		usersOptions({ search: data.search, verified: data.verified }, data.page)
+	);
+	const fields = createQuery(() => userFieldsOptions(data.fields));
 
 	// A writable derived: typing updates it, and it goes back to following the
 	// URL whenever that changes, so the back button and a shared link both put
@@ -29,12 +42,23 @@
 	let userOpen = $state(false);
 	let fieldsOpen = $state(false);
 
-	/** The rows that are ticked, by id. The table prunes any that a search
-	    takes out of view, so this only ever holds rows you can act on. */
-	let selection = $state<string[]>([]);
+	/** The rows that are ticked, by id. */
+	let selected = $state<string[]>([]);
+
+	/** The ticked rows that are actually on screen.
+	
+	    A search or a filter can take a ticked row out of view, and deleting
+	    what nobody can see is not something a panel should offer. Everything
+	    the bar says and does goes through this rather than through the raw
+	    list, so what is counted is what is shown. */
+	const visible = $derived(new Set(users.data.users.map((user) => user.id)));
+	const chosen = $derived(selected.filter((id) => visible.has(id)));
 	let confirmingDelete = $state(false);
-	let busy = $state(false);
 	let error = $state('');
+
+	/** True while the chosen records are being deleted. Ours rather than the
+	    mutation's own isPending, so the bar cannot be left disabled. */
+	let busy = $state(false);
 
 	/** The search and the filter are the URL, so the server renders the
 	    result and the back button walks through it. */
@@ -71,8 +95,8 @@
 
 	let refreshing = $state(false);
 
-	/** Asks the server for the list again, so a record someone else changed
-	    shows up without leaving the page.
+	/** Asks for the rows again, so a record someone else changed shows up
+	    without leaving the page.
 
 	    The spin is held for a moment even when the answer comes back at once:
 	    a button that does something invisible in 20ms reads as a button that
@@ -81,45 +105,51 @@
 		refreshing = true;
 
 		try {
-			await Promise.all([invalidateAll(), new Promise((done) => setTimeout(done, 400))]);
+			await Promise.all([
+				queryClient.invalidateQueries({ queryKey: keys.users.all }),
+				new Promise((done) => setTimeout(done, 400))
+			]);
 		} finally {
 			refreshing = false;
 		}
 	}
 
 	function reset() {
-		selection = [];
+		selected = [];
 		confirmingDelete = false;
 		error = '';
 	}
 
 	/** The records behind the ticked ids, in the order the table shows them. */
-	function chosen(): UserRecord[] {
-		return data.page.users.filter((user) => selection.includes(user.id));
+	function chosenRecords(): UserRecord[] {
+		return users.data.users.filter((user) => chosen.includes(user.id));
 	}
 
-	async function removeSelected() {
-		error = '';
-		busy = true;
-
-		try {
-			for (const id of selection) {
+	/** Deleting what is ticked, one call each — the API removes one record at
+	    a time, and a half-finished delete should still leave the list right,
+	    which is what refilling the cache afterwards is for. */
+	const removeSelected = createMutation(() => ({
+		mutationFn: async (ids: string[]) => {
+			for (const id of ids) {
 				await usersApi.remove(id);
 			}
-
+		},
+		onSuccess: () => {
 			reset();
-			await invalidateAll();
-		} catch (err) {
+			return queryClient.invalidateQueries({ queryKey: keys.users.all });
+		},
+		onError: (err: unknown) => {
 			error = err instanceof ApiError ? err.message : 'Could not delete these users';
-		} finally {
+		},
+		onSettled: () => {
 			busy = false;
 		}
-	}
+	}));
 
 	/** Hands the chosen records to the browser as a file. Nothing leaves the
 	    machine: the JSON is built here from what the page already has. */
 	function download() {
-		const blob = new Blob([JSON.stringify(chosen(), null, 2)], { type: 'application/json' });
+		const blob = new Blob([JSON.stringify(chosenRecords(), null, 2)], { type: 'application/json' });
 		const url = URL.createObjectURL(blob);
 		const link = document.createElement('a');
 
@@ -142,7 +172,7 @@
 <header>
 	<div class="title">
 		<h1>Users</h1>
-		<span class="total">{data.page.total} total</span>
+		<span class="total">{users.data.total} total</span>
 
 		<IconButton icon={RiSettings3Line} label="Field settings" onclick={() => (fieldsOpen = true)} />
 
@@ -150,7 +180,7 @@
 			icon={RiRefreshLine}
 			label="Refresh the data"
 			onclick={refresh}
-			spinning={refreshing}
+			loading={refreshing}
 			disabled={refreshing}
 		/>
 	</div>
@@ -199,23 +229,39 @@
 	<div class="gutter error"><Alert>{error}</Alert></div>
 {/if}
 
-<UserTable users={data.page.users} fields={data.fields} onOpen={openUser} bind:selection />
+<UserTable
+	users={users.data.users}
+	fields={fields.data}
+	onOpen={openUser}
+	selected={chosen}
+	onSelect={(ids) => (selected = ids)}
+/>
 
-<SelectionBar count={selection.length} onReset={reset}>
+<SelectionBar count={chosen.length} onReset={reset}>
 	{#if confirmingDelete}
-		<Button
-			variant="secondary"
-			size="sm"
-			onclick={() => (confirmingDelete = false)}
-			disabled={busy}
-		>
+		<Button variant="subtle" size="sm" onclick={() => (confirmingDelete = false)} disabled={busy}>
 			Keep them
 		</Button>
-		<Button variant="danger" size="sm" onclick={removeSelected} disabled={busy}>
-			{busy ? 'Deleting…' : `Delete ${selection.length}`}
+		<Button
+			colorPalette="danger"
+			size="sm"
+			onclick={() => {
+				if (busy) return;
+				error = '';
+				busy = true;
+				removeSelected.mutate(chosen);
+			}}
+			disabled={busy}
+		>
+			{busy ? 'Deleting…' : `Delete ${chosen.length}`}
 		</Button>
 	{:else}
-		<Button variant="danger" size="sm" onclick={() => (confirmingDelete = true)} disabled={busy}>
+		<Button
+			colorPalette="danger"
+			size="sm"
+			onclick={() => (confirmingDelete = true)}
+			disabled={busy}
+		>
 			<Icon icon={RiDeleteBinLine} />
 			Delete
 		</Button>
@@ -226,8 +272,8 @@
 	{/if}
 </SelectionBar>
 
-<UserDrawer user={editing} fields={data.fields} bind:open={userOpen} />
-<FieldsDrawer fields={data.fields} bind:open={fieldsOpen} />
+<UserDrawer user={editing} fields={fields.data} bind:open={userOpen} />
+<FieldsDrawer fields={fields.data} bind:open={fieldsOpen} />
 
 <style>
 	header {
@@ -293,16 +339,19 @@
 		outline: none;
 	}
 
+	/* The same height as the search box beside it and the buttons above it:
+	   the toolbar reads as one row rather than three sizes. */
 	.filter {
 		display: flex;
 		gap: 2px;
-		padding: 2px;
-		border-radius: var(--radius-sm);
+		height: var(--control-height);
+		padding: 3px;
+		border-radius: var(--radius-md);
 		background: var(--color-input);
 	}
 
 	.filter button {
-		padding: 0 var(--space-3);
+		padding: 0 var(--space-4);
 		border: none;
 		border-radius: var(--radius-sm);
 		background: transparent;

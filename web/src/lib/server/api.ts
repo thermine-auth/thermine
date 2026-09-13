@@ -2,8 +2,7 @@ import { error, redirect, type Cookies } from '@sveltejs/kit';
 import { resolve } from '$app/paths';
 import { PUBLIC_API_URL } from '$env/static/public';
 
-/** The cookie the API sets when an administrator signs in. */
-const SESSION_COOKIE = 'xermess_session';
+import { COOKIES } from '$lib/constants';
 
 /**
  * Calls the API as the administrator making this request.
@@ -14,11 +13,11 @@ const SESSION_COOKIE = 'xermess_session';
  * instead of assembled in the browser afterwards.
  */
 async function call(path: string, cookies: Cookies, fetch: typeof globalThis.fetch) {
-	const session = cookies.get(SESSION_COOKIE);
+	const session = cookies.get(COOKIES.session);
 
 	try {
 		return await fetch(`${PUBLIC_API_URL}/api/v1${path}`, {
-			headers: session ? { cookie: `${SESSION_COOKIE}=${session}` } : {}
+			headers: session ? { cookie: `${COOKIES.session}=${session}` } : {}
 		});
 	} catch {
 		error(503, `Could not reach the API at ${PUBLIC_API_URL}. Is it running?`);
@@ -47,13 +46,33 @@ export async function apiGet<T>(
 	return response.json() as Promise<T>;
 }
 
+/**
+ * Whether the panel still has to be set up — that is, whether the API has no
+ * administrator yet.
+ *
+ * The sign-in page asks before it draws itself: with no account to sign in
+ * to, the only useful thing to show is the form that makes one.
+ */
+export async function setupRequired(
+	cookies: Cookies,
+	fetch: typeof globalThis.fetch
+): Promise<boolean> {
+	const response = await call('/admin/setup', cookies, fetch);
+
+	if (!response.ok) return false;
+
+	const { required } = (await response.json()) as { required: boolean };
+
+	return required;
+}
+
 /** Whether the request carries a session the API accepts. Used by the sign-in
  *  page, which sends people who already have one back to the panel. */
 export async function hasSession(
 	cookies: Cookies,
 	fetch: typeof globalThis.fetch
 ): Promise<boolean> {
-	if (!cookies.get(SESSION_COOKIE)) return false;
+	if (!cookies.get(COOKIES.session)) return false;
 
 	const response = await call('/admin/me', cookies, fetch);
 

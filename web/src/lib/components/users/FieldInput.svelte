@@ -1,8 +1,6 @@
 <script lang="ts">
-	import { Field } from '@ark-ui/svelte/field';
-	import { Switch } from '@ark-ui/svelte/switch';
 	import type { UserField } from '$lib/api';
-	import { Icon } from '$lib/components/ui';
+	import { Input, Switch } from '$lib/components/ui';
 	import { fieldIcons } from './fieldIcons';
 
 	type Props = {
@@ -27,24 +25,14 @@
 </script>
 
 {#if field.type === 'bool'}
-	<Switch.Root checked={value === true} onCheckedChange={(details) => (value = details.checked)}>
-		<Switch.Control><Switch.Thumb /></Switch.Control>
-		<Switch.Label>{field.label}</Switch.Label>
-		<Switch.HiddenInput />
-	</Switch.Root>
+	<Switch label={field.label} checked={value === true} onChange={(on) => (value = on)} />
 {:else}
-	<Field.Root required={field.required}>
-		<Field.Label>
-			<Icon icon={fieldIcons[field.type]} />
-			{field.label}
-			{#if field.required}
-				<Field.RequiredIndicator>*</Field.RequiredIndicator>
-			{/if}
-		</Field.Label>
-		<Field.Input
-			value={String(value ?? '')}
-			oninput={(event) => (value = event.currentTarget.value)}
-			type={inputType}
-		/>
-	</Field.Root>
+	<Input
+		label={field.label}
+		icon={fieldIcons[field.type]}
+		value={String(value ?? '')}
+		oninput={(event) => (value = event.currentTarget.value)}
+		type={inputType}
+		required={field.required}
+	/>
 {/if}

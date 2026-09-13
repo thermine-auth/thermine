@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { FieldType } from '$lib/api';
 	import { Badge } from '$lib/components/ui';
+	import { formatDate } from '$lib/utils/format';
 
 	type Props = {
 		type: FieldType;
@@ -10,12 +11,6 @@
 	let { type, value }: Props = $props();
 
 	const empty = $derived(value === null || value === undefined || value === '');
-
-	/** Dates are stored as timestamps and read as days. */
-	function asDate(raw: unknown): string {
-		const date = new Date(String(raw));
-		return Number.isNaN(date.getTime()) ? String(raw) : date.toLocaleDateString();
-	}
 </script>
 
 {#if empty}
@@ -26,7 +21,7 @@
 {:else if type === 'number'}
 	<span class="mono">{Number(value).toLocaleString()}</span>
 {:else if type === 'date'}
-	<span class="mono">{asDate(value)}</span>
+	<span class="mono">{formatDate(String(value))}</span>
 {:else}
 	<span class="text">{value}</span>
 {/if}

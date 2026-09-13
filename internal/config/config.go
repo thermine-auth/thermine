@@ -10,18 +10,14 @@ import (
 )
 
 // Config is every setting the server has.
+//
+// There is nothing here about the first administrator: that account is made
+// on /admin/new-super-admin the first time the panel is opened, so no
+// password is ever written in a file.
 type Config struct {
 	Addr        string
 	CORSOrigins []string
 	DB          DB
-	Admin       Admin
-}
-
-// Admin is the first administrator, created by a migration. Leaving either
-// field empty means no administrator is created.
-type Admin struct {
-	Username string
-	Password string
 }
 
 // DB is the database connection and migration settings.
@@ -50,21 +46,6 @@ func read() (*viper.Viper, error) {
 	return v, nil
 }
 
-// LoadAdmin reads only the administrator credentials. The migration that
-// seeds the first administrator uses this rather than Load, so a missing
-// database setting cannot fail a migration that has no use for it.
-func LoadAdmin() (Admin, error) {
-	v, err := read()
-	if err != nil {
-		return Admin{}, err
-	}
-
-	return Admin{
-		Username: v.GetString("XERMESS_ADMIN_USERNAME"),
-		Password: v.GetString("XERMESS_ADMIN_PASSWORD"),
-	}, nil
-}
-
 // Load reads every setting the server needs.
 func Load() (Config, error) {
 	v, err := read()
@@ -83,10 +64,6 @@ func Load() (Config, error) {
 	cfg := Config{
 		Addr:        v.GetString("XERMESS_ADDR"),
 		CORSOrigins: splitList(v.GetString("XERMESS_CORS_ORIGINS")),
-		Admin: Admin{
-			Username: v.GetString("XERMESS_ADMIN_USERNAME"),
-			Password: v.GetString("XERMESS_ADMIN_PASSWORD"),
-		},
 		DB: DB{
 			Driver:     v.GetString("XERMESS_DB_DRIVER"),
 			DSN:        v.GetString("XERMESS_DB_DSN"),

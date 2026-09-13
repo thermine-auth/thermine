@@ -1,8 +1,16 @@
 <script lang="ts">
 	import { RiMoonLine, RiSunLine } from 'svelte-remixicon';
-	import { theme } from '$lib/theme.svelte';
+	import { theme } from '$lib/state/theme.svelte';
+	import type { Size } from './control';
 	import Icon from './Icon.svelte';
 	import Tooltip from './Tooltip.svelte';
+
+	type Props = { size?: Size };
+
+	let { size = 'md' }: Props = $props();
+
+	/** The glyph is a share of the button, the same way IconButton scales. */
+	const glyph: Record<Size, string> = { sm: '1rem', md: '1.125rem', lg: '1.25rem' };
 </script>
 
 <!--
@@ -18,35 +26,32 @@
 		<button
 			{...trigger()}
 			type="button"
-			class="icon-button md"
+			class="control"
+			data-icon="true"
+			data-size={size}
+			data-variant="ghost"
+			data-palette="neutral"
 			onclick={() => theme.toggle()}
 			aria-label="Switch between the light and dark theme"
 		>
-			<span class="icons">
-				<span class="moon"><Icon icon={RiMoonLine} size="1.125rem" /></span>
-				<span class="sun"><Icon icon={RiSunLine} size="1.125rem" /></span>
+			<span class="icons" style="--glyph: {glyph[size]}">
+				<span class="moon"><Icon icon={RiMoonLine} size={glyph[size]} /></span>
+				<span class="sun"><Icon icon={RiSunLine} size={glyph[size]} /></span>
 			</span>
 		</button>
 	{/snippet}
 </Tooltip>
 
 <style>
-	/* The shape is the shared .icon-button; what belongs to this button is
-	   the press and the two icons turning into each other. */
-	button {
-		transition: transform var(--speed-fast);
-	}
-
-	button:active {
-		transform: scale(0.92);
-	}
+	/* The shape and the press come from the shared control; what belongs to
+	   this button is the two icons turning into each other. */
 
 	.icons {
 		position: relative;
 		display: grid;
 		place-items: center;
-		width: 1.125rem;
-		height: 1.125rem;
+		width: var(--glyph);
+		height: var(--glyph);
 	}
 
 	.moon,

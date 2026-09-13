@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { RiVerifiedBadgeLine } from 'svelte-remixicon';
 	import type { UserField, UserRecord } from '$lib/api';
-	import { Badge, DataTable, type Column } from '$lib/components/ui';
+	import { DataTable, type Column } from '$lib/components/ui';
 	import FieldValue from './FieldValue.svelte';
+	import { valueOf } from './fields';
 	import { fieldIcons, idIcon } from './fieldIcons';
 
 	type Props = {
@@ -10,23 +10,23 @@
 		fields: UserField[];
 		/** Called with the user whose row was chosen. */
 		onOpen: (user: UserRecord) => void;
-		/** The ids of the ticked rows; bind to act on them. */
-		selection: string[];
+		/** The ids of the ticked rows, and how to say that they changed. */
+		selected: string[];
+		onSelect: (ids: string[]) => void;
 	};
 
-	let { users, fields, onOpen, selection = $bindable() }: Props = $props();
+	let { users, fields, onOpen, selected, onSelect }: Props = $props();
 
-	/** id and the two built-in columns, then whatever fields are defined, so
-	    a new field needs no change here. */
+	/** The id, then every field the API listed: the built-in ones first and
+	    then whatever this organisation added. One list, so a new field needs
+	    no change here. */
 	const columns = $derived<Column[]>([
 		{ key: 'id', label: 'id', icon: idIcon, min: '10rem' },
-		{ key: 'email', label: 'email', icon: fieldIcons.email, min: '13rem' },
-		{ key: 'email_verified', label: 'email_verified', icon: RiVerifiedBadgeLine, min: '10rem' },
 		...fields.map((field) => ({
 			key: field.name,
 			label: field.name,
 			icon: fieldIcons[field.type],
-			min: '9rem'
+			min: field.type === 'email' ? '13rem' : field.type === 'bool' ? '8rem' : '9rem'
 		}))
 	]);
 
@@ -42,18 +42,14 @@
 	empty="No users match this."
 	{onOpen}
 	label={(user) => `Edit ${user.email}`}
-	bind:selection
+	{selected}
+	{onSelect}
 >
 	{#snippet row(user)}
 		<td><span class="chip">{shortId(user.id)}</span></td>
-		<td>{user.email}</td>
-		<td>
-			<Badge tone={user.email_verified ? 'success' : 'neutral'}>
-				{user.email_verified ? 'True' : 'False'}
-			</Badge>
-		</td>
-		{#each fields as field (field.id)}
-			<td><FieldValue type={field.type} value={user.data?.[field.name]} /></td>
+
+		{#each fields as field (field.name)}
+			<td><FieldValue type={field.type} value={valueOf(user, field)} /></td>
 		{/each}
 	{/snippet}
 </DataTable>

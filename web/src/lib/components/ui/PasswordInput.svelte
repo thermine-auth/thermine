@@ -7,6 +7,7 @@
 		label: string;
 		value: string;
 		disabled?: boolean;
+		required?: boolean;
 		autocomplete?: 'current-password' | 'new-password';
 	};
 
@@ -14,11 +15,12 @@
 		label,
 		value = $bindable(''),
 		disabled,
+		required,
 		autocomplete = 'current-password'
 	}: Props = $props();
 </script>
 
-<PasswordInput.Root {disabled}>
+<PasswordInput.Root {disabled} {required}>
 	<PasswordInput.Label>{label}</PasswordInput.Label>
 	<PasswordInput.Control>
 		<PasswordInput.Input bind:value {autocomplete} />

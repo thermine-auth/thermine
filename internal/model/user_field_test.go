@@ -227,3 +227,93 @@ func TestFieldValidate(t *testing.T) {
 		})
 	}
 }
+
+// TestBuiltinFieldsAreDescribed checks the list the panel draws its table
+// from: every built-in field says what it is, and none of them claims to be
+// something that could be stored in user_fields.
+func TestBuiltinFieldsAreDescribed(t *testing.T) {
+	seen := map[string]bool{}
+
+	for _, field := range BuiltinFields() {
+		if field.Name == "" || field.Label == "" {
+			t.Errorf("field %+v is missing a name or a label", field)
+		}
+
+		if !field.Type.Valid() {
+			t.Errorf("%s has type %q, which is not a field type", field.Name, field.Type)
+		}
+
+		if !field.Builtin {
+			t.Errorf("%s is in BuiltinFields but is not marked as built in", field.Name)
+		}
+
+		if err := field.Validate(); err != nil {
+			t.Errorf("%s carries a rule it cannot keep: %v", field.Name, err)
+		}
+
+		if seen[field.Name] {
+			t.Errorf("%s is listed twice", field.Name)
+		}
+		seen[field.Name] = true
+	}
+}
+
+// The columns of the record and the names of the built-in fields have to be
+// the same set: the panel reads a value by the field's name, so a name with
+// no column behind it would show nothing and save nowhere.
+func TestBuiltinFieldsMatchTheColumns(t *testing.T) {
+	columns := map[string]bool{
+		FieldEmailName:         true,
+		FieldEmailVerifiedName: true,
+		FieldFirstNameName:     true,
+		FieldLastNameName:      true,
+		FieldIsActiveName:      true,
+	}
+
+	for _, field := range BuiltinFields() {
+		if !columns[field.Name] {
+			t.Errorf("%s is described but is not one of the record's columns", field.Name)
+		}
+		delete(columns, field.Name)
+	}
+
+	for name := range columns {
+		t.Errorf("%s is a column of the record but is not described", name)
+	}
+}
+
+func TestIsBuiltinField(t *testing.T) {
+	for _, name := range []string{"email", "first_name", "is_active"} {
+		if !IsBuiltinField(name) {
+			t.Errorf("IsBuiltinField(%q) = false, want true", name)
+		}
+	}
+
+	for _, name := range []string{"", "nickname", "Email", "is_active2"} {
+		if IsBuiltinField(name) {
+			t.Errorf("IsBuiltinField(%q) = true, want false", name)
+		}
+	}
+}
+
+// FullName is what the panel calls a user when it has room for one line.
+func TestUserFullName(t *testing.T) {
+	tests := []struct {
+		name string
+		user User
+		want string
+	}{
+		{name: "both names", user: User{FirstName: "Mira", LastName: "Testova"}, want: "Mira Testova"},
+		{name: "first only", user: User{FirstName: "Mira"}, want: "Mira"},
+		{name: "last only", user: User{LastName: "Testova"}, want: "Testova"},
+		{name: "neither", user: User{Email: "mira@example.com"}, want: "mira@example.com"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.user.FullName(); got != tt.want {
+				t.Errorf("FullName() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

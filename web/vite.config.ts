@@ -4,6 +4,13 @@ import adapter from '@sveltejs/adapter-auto';
 import { sveltekit } from '@sveltejs/kit/vite';
 
 export default defineConfig({
+	// The query library ships its components as .svelte files. Node cannot
+	// import those, so while rendering on the server Vite has to compile it
+	// with everything else rather than leaving it to the runtime.
+	ssr: {
+		noExternal: ['@tanstack/svelte-query']
+	},
+
 	plugins: [
 		sveltekit({
 			compilerOptions: {

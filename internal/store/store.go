@@ -9,6 +9,7 @@ package store
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"gorm.io/gorm"
@@ -43,7 +44,10 @@ func translate(err error) error {
 	case errors.Is(err, gorm.ErrRecordNotFound):
 		return ErrNotFound
 	case strings.Contains(strings.ToLower(err.Error()), "duplicate"):
-		return ErrDuplicate
+		// Wrapped rather than replaced: errors.Is still finds the sentinel,
+		// and what the database said is still there for DuplicateField to
+		// read the column out of.
+		return fmt.Errorf("%w: %s", ErrDuplicate, err)
 	default:
 		return err
 	}

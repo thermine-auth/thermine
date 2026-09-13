@@ -1,9 +1,15 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { QueryClientProvider } from '@tanstack/svelte-query';
 	import favicon from '$lib/assets/favicon.svg';
+	import { createQueryClient } from '$lib/query';
 	import '$lib/styles/app.css';
 
 	let { children }: { children: Snippet } = $props();
+
+	// One cache for this visitor, built here so that rendering on the server
+	// gives each request its own.
+	const queryClient = createQueryClient();
 </script>
 
 <!-- No <title> here on purpose. A title in this layout is only applied once
@@ -14,4 +20,6 @@
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
-{@render children()}
+<QueryClientProvider client={queryClient}>
+	{@render children()}
+</QueryClientProvider>

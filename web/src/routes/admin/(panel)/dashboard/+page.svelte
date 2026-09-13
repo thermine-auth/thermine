@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { RiAdminLine, RiComputerLine, RiHistoryLine, RiShieldUserLine } from 'svelte-remixicon';
-	import ActivityTable from '$lib/components/admin/ActivityTable.svelte';
-	import SessionTable from '$lib/components/admin/SessionTable.svelte';
-	import StatGrid from '$lib/components/admin/StatGrid.svelte';
+	import ActivityTable from '$lib/components/activity/ActivityTable.svelte';
+	import SessionTable from '$lib/components/profile/SessionTable.svelte';
+	import StatGrid from '$lib/components/activity/StatGrid.svelte';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();

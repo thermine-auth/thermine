@@ -32,11 +32,12 @@ var instance = newValidator()
 // messages is what to say about each rule, added to the field's name. The
 // built-in rules are listed here; a package can add its own with Register.
 var messages = map[string]string{
-	"required": "is required",
-	"email":    "must be an email address",
-	"max":      "is too long",
-	"min":      "is too short",
-	"oneof":    "is not one of the values allowed",
+	"required":   "is required",
+	"email":      "must be an email address",
+	"max":        "is too long",
+	"min":        "is too short",
+	"oneof":      "is not one of the values allowed",
+	"startswith": "does not start the way it has to",
 }
 
 func newValidator() *validator.Validate {
@@ -109,6 +110,8 @@ func Message(broken validator.FieldError) string {
 			said = fmt.Sprintf("must be at least %s characters", param)
 		case "oneof":
 			said = "must be one of: " + strings.ReplaceAll(param, " ", ", ")
+		case "startswith":
+			said = fmt.Sprintf("must start with %q", param)
 		}
 	}
 

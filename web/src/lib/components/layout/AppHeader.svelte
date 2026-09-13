@@ -3,7 +3,7 @@
 	import { resolve } from '$app/paths';
 	import { RiFileListLine, RiShieldKeyholeLine, RiDashboardLine } from 'svelte-remixicon';
 	import type { Admin } from '$lib/api';
-	import { Icon, ThemeToggle } from '$lib/components/ui';
+	import { Icon, LinkButton, ThemeToggle } from '$lib/components/ui';
 	import AccountMenu from './AccountMenu.svelte';
 
 	type Props = { admin: Admin };
@@ -31,22 +31,28 @@
 		<strong>xermess</strong>
 	</a>
 
+	<!-- The sections are links that look like buttons, so they are the same
+	     control as everything else in the bar, at the same size: the bar is
+	     55px tall, so its controls take the smaller step and leave air above
+	     and below. The current one is the one thing in the bar that is fully
+	     dark. -->
 	<nav aria-label="Sections">
 		{#each links as link (link.href)}
-			<a
+			<LinkButton
 				href={link.href}
-				class:current={isCurrent(link.href)}
+				icon={link.icon}
+				size="sm"
+				variant={isCurrent(link.href) ? 'solid' : 'ghost'}
 				aria-current={isCurrent(link.href) ? 'page' : undefined}
 			>
-				<Icon icon={link.icon} />
 				<span class="label">{link.label}</span>
-			</a>
+			</LinkButton>
 		{/each}
 	</nav>
 
 	<div class="account">
-		<ThemeToggle />
-		<AccountMenu {admin} />
+		<ThemeToggle size="sm" />
+		<AccountMenu {admin} size="sm" />
 	</div>
 </header>
 
@@ -93,33 +99,6 @@
 		gap: var(--space-1);
 	}
 
-	nav a {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-		height: 35px;
-		padding: 0 var(--space-3);
-		border-radius: var(--radius-sm);
-		color: var(--color-text-hint);
-		font-size: var(--text-base);
-		font-weight: 500;
-		text-decoration: none;
-		transition:
-			background-color var(--speed-fast),
-			color var(--speed-fast);
-	}
-
-	nav a:hover {
-		background: var(--color-secondary);
-		color: var(--color-text);
-	}
-
-	/* The current section is the one thing in the bar that is fully dark. */
-	nav a.current {
-		background: var(--color-primary);
-		color: var(--color-primary-text);
-	}
-
 	.account {
 		margin-left: auto;
 		display: flex;
@@ -137,21 +116,20 @@
 			display: none;
 		}
 
-		nav a {
-			padding: 0 var(--space-2);
+		nav :global(.control) {
+			padding: 0 var(--space-3);
 		}
 	}
 
 	/* Below this the labels do not fit beside the account menu, so the
 	   sections become their icons. The label stays in the accessible name. */
 	@media (max-width: 30rem) {
-		nav a {
-			width: 34px;
-			justify-content: center;
+		nav :global(.control) {
+			width: var(--control-height-sm);
 			padding: 0;
 		}
 
-		nav a > .label {
+		.label {
 			position: absolute;
 			width: 1px;
 			height: 1px;

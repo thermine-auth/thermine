@@ -17,20 +17,28 @@ const maxPageSize = 200
 
 // userRequest is the body of the create and update endpoints.
 //
-// The email is the account: it is the only column a user record has of its
-// own, and what someone signs in with. Data carries the user-defined fields,
-// whose rules live in user_fields and are checked in validation.go rather
-// than in a tag here.
+// The named fields are the built-in ones: they are columns of the record, so
+// they are spelled out here and held to the rules in the tags. Data carries
+// the additional fields an organisation added, whose rules live in
+// user_fields and are applied in validation.go.
 type userRequest struct {
-	Email         string         `json:"email" validate:"required,email,max=255"`
-	EmailVerified bool           `json:"email_verified"`
-	Data          map[string]any `json:"data"`
+	Email         string `json:"email" validate:"required,email,max=255"`
+	EmailVerified bool   `json:"email_verified"`
+
+	FirstName string `json:"first_name" validate:"max=100"`
+	LastName  string `json:"last_name" validate:"max=100"`
+
+	IsActive bool `json:"is_active"`
+
+	Data map[string]any `json:"data"`
 }
 
-// clean tidies what can be tidied, so the rules below see the value that
+// clean tidies what can be tidied, so the rules below see the values that
 // would actually be stored.
 func (r *userRequest) clean() {
 	r.Email = trimmedLower(r.Email)
+	r.FirstName = strings.TrimSpace(r.FirstName)
+	r.LastName = strings.TrimSpace(r.LastName)
 }
 
 // listQuery reads the search box, the filter and the page out of the query

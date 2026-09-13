@@ -2,7 +2,7 @@
 	import { RiComputerLine } from 'svelte-remixicon';
 	import type { AdminSession } from '$lib/api';
 	import { Badge, DataTable, Icon, type Column } from '$lib/components/ui';
-	import { formatDateTime } from '$lib/format';
+	import { formatDateTime } from '$lib/utils/format';
 
 	type Props = { sessions: AdminSession[] };
 

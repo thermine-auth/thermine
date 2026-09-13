@@ -1,14 +1,17 @@
 <script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { useQueryClient } from '@tanstack/svelte-query';
 	import { Menu } from '@ark-ui/svelte/menu';
 	import { RiArrowDownSLine, RiLogoutBoxRLine, RiUserSettingsLine } from 'svelte-remixicon';
 	import { adminApi, type Admin } from '$lib/api';
-	import { Icon } from '$lib/components/ui';
+	import { Icon, type Size } from '$lib/components/ui';
 
-	type Props = { admin: Admin };
+	type Props = { admin: Admin; size?: Size };
 
-	let { admin }: Props = $props();
+	let { admin, size = 'md' }: Props = $props();
+
+	const queryClient = useQueryClient();
 
 	let signingOut = $state(false);
 
@@ -31,7 +34,10 @@
 			await adminApi.logout();
 		} finally {
 			// However the server answered, this browser is done with the
-			// session: drop what was loaded with it and go to the sign-in page.
+			// session: drop everything that was loaded with it — the pages
+			// and the cache behind them — and go to the sign-in page. What
+			// one administrator saw is not for whoever signs in next.
+			queryClient.clear();
 			await invalidateAll();
 			await goto(resolve('/admin/login'), { replaceState: true });
 		}
@@ -42,7 +48,12 @@
 	positioning={{ placement: 'bottom-end', gutter: 6 }}
 	onSelect={(details) => open(details.value)}
 >
-	<Menu.Trigger class="trigger">
+	<Menu.Trigger
+		class="control trigger"
+		data-size={size}
+		data-variant="ghost"
+		data-palette="neutral"
+	>
 		<span class="monogram" aria-hidden="true">{monogram}</span>
 		<span class="name">{admin.username}</span>
 		<Icon icon={RiArrowDownSLine} />
@@ -72,25 +83,18 @@
 </Menu.Root>
 
 <style>
-	:global([data-scope='menu'][data-part='trigger'].trigger) {
-		display: flex;
-		align-items: center;
+	/* The shape is the shared control; what belongs to this one is the name
+	   beside the monogram, which reads as text rather than as a label on a
+	   quiet button. */
+	:global(.trigger.control) {
 		gap: var(--space-2);
-		height: 35px;
 		padding: 0 var(--space-2);
-		border: none;
-		border-radius: var(--radius-sm);
-		background: transparent;
 		color: var(--color-text);
-		font: inherit;
-		font-size: var(--text-base);
-		cursor: pointer;
-		transition: background-color var(--speed-fast);
+		font-weight: 500;
 	}
 
-	:global([data-scope='menu'][data-part='trigger'].trigger:hover),
-	:global([data-scope='menu'][data-part='trigger'].trigger[data-state='open']) {
-		background: var(--color-secondary);
+	:global(.trigger.control[data-state='open']) {
+		background: var(--palette-subtle);
 	}
 
 	.monogram {

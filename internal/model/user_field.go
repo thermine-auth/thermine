@@ -33,9 +33,16 @@ func (t FieldType) Valid() bool {
 	return false
 }
 
-// UserField is one column of the user record, defined at runtime rather than
-// in the schema: the values themselves live in users.data, so adding a field
-// is a row here rather than a migration.
+// UserField describes one field of a user record.
+//
+// A row of this table is an additional field: something an organisation added
+// in the panel, whose values live in users.data, so adding one is a row here
+// rather than a migration somebody has to write.
+//
+// The built-in fields are described with this same struct — see BuiltinFields
+// at the bottom of the file — but no row of them exists or ever should: a
+// built-in field IS a column of users. Builtin says which of the two you are
+// holding.
 type UserField struct {
 	Base
 
@@ -56,11 +63,19 @@ type UserField struct {
 	Max *float64 `json:"max"`
 
 	// StartsWith is a prefix text has to begin with, such as "+" for a phone
-	// number. Empty means anything is accepted.
+	// number an organisation adds as a field of its own. Empty means anything
+	// is accepted.
 	StartsWith string `gorm:"size:64;not null;default:''" json:"starts_with"`
 
 	// Position orders the columns in the table and the inputs in the form.
+	// Built-in fields come first, in the order BuiltinFields lists them.
 	Position int `gorm:"not null;default:0" json:"position"`
+
+	// Builtin marks a field that is a column of the record rather than a row
+	// of this table. It is never stored — nothing in user_fields is built in
+	// — and is here so the panel can be given one list of fields and still
+	// know which of them it may edit.
+	Builtin bool `gorm:"-" json:"builtin"`
 }
 
 // Bounded reports whether this type of field can carry a Min and a Max.
@@ -255,4 +270,86 @@ func (f UserField) requiredError() error {
 		return ErrFieldValue{f.Name, "is required"}
 	}
 	return nil
+}
+
+// ---------------------------------------------------------------------------
+// The built-in fields: the columns of users, described.
+// ---------------------------------------------------------------------------
+
+// The built-in fields of a user record, by name. They are columns of the
+// users table — nothing here is ever inserted anywhere — so these names are
+// reserved: an additional field may not take one.
+const (
+	FieldEmailName         = "email"
+	FieldEmailVerifiedName = "email_verified"
+	FieldFirstNameName     = "first_name"
+	FieldLastNameName      = "last_name"
+	FieldIsActiveName      = "is_active"
+)
+
+// BuiltinFields describes the columns every user record has.
+//
+// They are described with the same shape as the additional ones so the panel
+// can draw one table and one form from a single list, and so the rules a
+// value keeps read the same either way. Nothing here is stored in
+// user_fields: this is the description of columns that already exist, which
+// is why none of them can be edited or removed.
+func BuiltinFields() []UserField {
+	max := func(n float64) *float64 { return &n }
+
+	return []UserField{
+		{
+			Name:     FieldEmailName,
+			Label:    "Email",
+			Type:     FieldEmail,
+			Required: true,
+			Unique:   true,
+			Max:      max(255),
+			Builtin:  true,
+			Position: 1,
+		},
+		{
+			Name:     FieldEmailVerifiedName,
+			Label:    "Email verified",
+			Type:     FieldBool,
+			Builtin:  true,
+			Position: 2,
+		},
+		{
+			Name:     FieldFirstNameName,
+			Label:    "First name",
+			Type:     FieldText,
+			Max:      max(100),
+			Builtin:  true,
+			Position: 3,
+		},
+		{
+			Name:     FieldLastNameName,
+			Label:    "Last name",
+			Type:     FieldText,
+			Max:      max(100),
+			Builtin:  true,
+			Position: 4,
+		},
+		{
+			Name:     FieldIsActiveName,
+			Label:    "Active",
+			Type:     FieldBool,
+			Builtin:  true,
+			Position: 5,
+		},
+	}
+}
+
+// IsBuiltinField reports whether a name belongs to a column of the record.
+// Additional fields are checked against this: two fields with one name would
+// be two places to look for the same thing.
+func IsBuiltinField(name string) bool {
+	for _, field := range BuiltinFields() {
+		if field.Name == name {
+			return true
+		}
+	}
+
+	return false
 }

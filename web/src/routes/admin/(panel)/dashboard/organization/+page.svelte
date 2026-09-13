@@ -1,7 +1,6 @@
 <script lang="ts">
-	import PageHeading from '$lib/components/admin/PageHeading.svelte';
-	import { Badge, Card } from '$lib/components/ui';
-	import { demoOrganization as org } from '$lib/demo';
+	import { Badge, Card, PageHeading } from '$lib/components/ui';
+	import { demoOrganization as org } from '$lib/data/demo';
 
 	const details = [
 		{ label: 'Name', value: org.name },

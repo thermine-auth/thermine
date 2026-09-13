@@ -32,7 +32,19 @@
 	--space-6: 40px;
 
 	/* Layout */
+
+	/* Every control is one of two heights: md is the default, and what a
+	   toolbar row is built from — a button, an icon button, an input, a
+	   filter — so they line up without anyone measuring. sm is for controls
+	   inside a row or a bar, where a full-height one would crowd it. */
 	--control-height: 45px;
+	--control-height-sm: 35px;
+	--control-height-lg: 52px;
+
+	/* A row in a list of places to go, rather than a control to press: the
+	   sidebar is a column of these, and a column of 45px rows would be a
+	   column of buttons. */
+	--nav-item-height: 34px;
 	--header-height: 55px;
 	--sidebar-width: 15rem;
 	/* How far a page's text is inset. Tables run past it to the edges, the

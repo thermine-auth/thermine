@@ -1,10 +1,21 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
-	import { Field } from '@ark-ui/svelte/field';
-	import { Switch } from '@ark-ui/svelte/switch';
+	import { createMutation, useQueryClient } from '@tanstack/svelte-query';
 	import { RiAddLine, RiDeleteBinLine, RiPencilLine } from 'svelte-remixicon';
 	import { ApiError, usersApi, type FieldType, type UserField } from '$lib/api';
-	import { Alert, Badge, Button, Drawer, Icon, IconButton } from '$lib/components/ui';
+	import {
+		Alert,
+		Badge,
+		Button,
+		Drawer,
+		Icon,
+		IconButton,
+		Input,
+		Select,
+		Switch
+	} from '$lib/components/ui';
+	import type { SelectOption } from '$lib/components/ui';
+	import { keys } from '$lib/query';
+	import { additional, builtins } from './fields';
 	import { fieldIcons } from './fieldIcons';
 
 	type Props = {
@@ -14,7 +25,29 @@
 
 	let { fields, open = $bindable(false) }: Props = $props();
 
-	const types: FieldType[] = ['text', 'number', 'bool', 'email', 'date'];
+	/** The two kinds, drawn as two lists: the built-in ones are columns of
+	    the record and are shown so an admin knows what is already there; the
+	    additional ones are this organisation's, and are the only ones that
+	    can be changed. */
+	const builtinFields = $derived(builtins(fields));
+	const addedFields = $derived(additional(fields));
+
+	const queryClient = useQueryClient();
+
+	/** A field changes what every user record looks like, so the fields and
+	    the rows are both refilled after a write. */
+	const refill = () => queryClient.invalidateQueries({ queryKey: keys.users.all });
+
+	/** The kinds of value a field can hold, each with the icon the table
+	    header and the record panel already use for it. Picking one is the
+	    single decision here that cannot be changed afterwards. */
+	const types: SelectOption<FieldType>[] = [
+		{ value: 'text', label: 'Plain text', icon: fieldIcons.text },
+		{ value: 'number', label: 'Number', icon: fieldIcons.number },
+		{ value: 'bool', label: 'Bool', icon: fieldIcons.bool },
+		{ value: 'email', label: 'Email', icon: fieldIcons.email },
+		{ value: 'date', label: 'Date', icon: fieldIcons.date }
+	];
 
 	/** The field being edited, or null while a new one is being written. A
 	    field's name and type are fixed once records hold values under them,
@@ -31,6 +64,10 @@
 	let startsWith = $state('');
 
 	let error = $state('');
+
+	/** True while a field is being written or removed. Ours rather than the
+	    mutations' own isPending, so the panel cannot be left disabled by a
+	    flag we do not control. */
 	let busy = $state(false);
 
 	/** Which rules this type of field can keep. Bools and dates carry none of
@@ -97,46 +134,51 @@
 		};
 	}
 
-	async function submit(event: SubmitEvent) {
-		event.preventDefault();
-
-		error = '';
-		busy = true;
-
-		try {
-			if (editing) {
-				await usersApi.updateField(editing.id, rules());
-			} else {
-				await usersApi.addField({
-					...rules(),
-					name: name.trim() || suggestName(label),
-					type
-				});
-			}
-
-			await invalidateAll();
+	const save = createMutation(() => ({
+		// Only an added field is ever edited here, and an added field is a
+		// row, so it has an id. A built-in one is never in `editing`: the
+		// list below offers no way to pick one.
+		mutationFn: () =>
+			editing?.id
+				? usersApi.updateField(editing.id, rules())
+				: usersApi.addField({ ...rules(), name: name.trim() || suggestName(label), type }),
+		onSuccess: async () => {
+			await refill();
 			blank();
-		} catch (err) {
+		},
+		onError: (err: unknown) => {
 			error = err instanceof ApiError ? err.message : 'Could not save this field';
-		} finally {
+		},
+		onSettled: () => {
 			busy = false;
 		}
-	}
+	}));
 
-	async function remove(field: UserField) {
-		error = '';
-		busy = true;
-
-		try {
-			await usersApi.removeField(field.id);
-			await invalidateAll();
+	const remove = createMutation(() => ({
+		mutationFn: (field: UserField) => usersApi.removeField(field.id ?? ''),
+		onSuccess: async (_result: void, field: UserField) => {
+			await refill();
 
 			if (editing?.id === field.id) blank();
-		} catch (err) {
+		},
+		onError: (err: unknown) => {
 			error = err instanceof ApiError ? err.message : 'Could not remove this field';
-		} finally {
+		},
+		onSettled: () => {
 			busy = false;
 		}
+	}));
+
+	function submit(event: SubmitEvent) {
+		event.preventDefault();
+
+		// One write at a time: a second one would race the first, and both
+		// would refill the same list.
+		if (busy) return;
+
+		error = '';
+		busy = true;
+		save.mutate();
 	}
 
 	/** What a field expects, said in a few words for the list. */
@@ -166,8 +208,37 @@
 		<div class="error"><Alert>{error}</Alert></div>
 	{/if}
 
+	<h3 class="group">Built in</h3>
+	<p class="hint lead">
+		Every user record has these. They are columns of the record itself, so they cannot be changed or
+		removed here.
+	</p>
+
 	<ul class="fields">
-		{#each fields as field (field.id)}
+		{#each builtinFields as field (field.name)}
+			<li class="locked">
+				<Icon icon={fieldIcons[field.type]} />
+
+				<span class="name">{field.name}</span>
+				<span class="hint">{field.type}</span>
+
+				<span class="rules">
+					{#each summary(field) as rule (rule)}
+						<Badge>{rule}</Badge>
+					{/each}
+				</span>
+			</li>
+		{/each}
+	</ul>
+
+	<h3 class="group second">Added here</h3>
+	<p class="hint lead">
+		Anything else this organisation keeps about a user. The values live in the record, so adding one
+		needs no migration.
+	</p>
+
+	<ul class="fields">
+		{#each addedFields as field (field.id)}
 			<li class:editing={editing?.id === field.id}>
 				<Icon icon={fieldIcons[field.type]} />
 
@@ -192,13 +263,18 @@
 					icon={RiDeleteBinLine}
 					label="Remove {field.name}"
 					size="sm"
-					tone="danger"
-					onclick={() => remove(field)}
+					colorPalette="danger"
+					onclick={() => {
+						if (busy) return;
+						error = '';
+						busy = true;
+						remove.mutate(field);
+					}}
 					disabled={busy}
 				/>
 			</li>
 		{:else}
-			<li class="hint">No fields yet. A user has only an email and its verified flag.</li>
+			<li class="hint">No added fields yet.</li>
 		{/each}
 	</ul>
 
@@ -206,96 +282,58 @@
 		<h3>{editing ? `Edit ${editing.name}` : 'Add a field'}</h3>
 
 		<div class="row">
-			<Field.Root>
-				<Field.Label>Label</Field.Label>
-				<Field.Input
-					value={label}
-					oninput={(event) => {
-						label = event.currentTarget.value;
-						if (!editing) name = suggestName(label);
-					}}
-					placeholder="Phone number"
-				/>
-			</Field.Root>
+			<Input
+				label="Label"
+				value={label}
+				oninput={(event) => {
+					label = event.currentTarget.value;
+					if (!editing) name = suggestName(label);
+				}}
+				placeholder="Phone number"
+			/>
 
-			<Field.Root readOnly={editing !== null}>
-				<Field.Label>Name</Field.Label>
-				<Field.Input
-					value={name}
-					oninput={(event) => (name = event.currentTarget.value)}
-					placeholder="phone_number"
-					readonly={editing !== null}
-				/>
-			</Field.Root>
+			<Input
+				label="Name"
+				bind:value={name}
+				placeholder="phone_number"
+				readOnly={editing !== null}
+			/>
 
-			<Field.Root readOnly={editing !== null}>
-				<Field.Label>Type</Field.Label>
-				<Field.Select
-					value={type}
-					disabled={editing !== null}
-					onchange={(event) => (type = event.currentTarget.value as FieldType)}
-				>
-					{#each types as option (option)}
-						<option value={option}>{option}</option>
-					{/each}
-				</Field.Select>
-			</Field.Root>
+			<Select label="Type" bind:value={type} options={types} readOnly={editing !== null} />
 		</div>
 
 		{#if bounded || prefixed}
 			<div class="row">
 				{#if bounded}
-					<Field.Root>
-						<Field.Label>{lengths ? 'Least characters' : 'Smallest value'}</Field.Label>
-						<Field.Input
-							value={min}
-							oninput={(event) => (min = event.currentTarget.value)}
-							type="number"
-							placeholder="any"
-						/>
-					</Field.Root>
+					<Input
+						label={lengths ? 'Least characters' : 'Smallest value'}
+						bind:value={min}
+						type="number"
+						placeholder="any"
+					/>
 
-					<Field.Root>
-						<Field.Label>{lengths ? 'Most characters' : 'Largest value'}</Field.Label>
-						<Field.Input
-							value={max}
-							oninput={(event) => (max = event.currentTarget.value)}
-							type="number"
-							placeholder="any"
-						/>
-					</Field.Root>
+					<Input
+						label={lengths ? 'Most characters' : 'Largest value'}
+						bind:value={max}
+						type="number"
+						placeholder="any"
+					/>
 				{/if}
 
 				{#if prefixed}
-					<Field.Root>
-						<Field.Label>Must start with</Field.Label>
-						<Field.Input
-							value={startsWith}
-							oninput={(event) => (startsWith = event.currentTarget.value)}
-							placeholder="+"
-						/>
-					</Field.Root>
+					<Input label="Must start with" bind:value={startsWith} placeholder="+" />
 				{/if}
 			</div>
 		{/if}
 
 		<div class="switches">
-			<Switch.Root checked={required} onCheckedChange={(details) => (required = details.checked)}>
-				<Switch.Control><Switch.Thumb /></Switch.Control>
-				<Switch.Label>Required</Switch.Label>
-				<Switch.HiddenInput />
-			</Switch.Root>
-
-			<Switch.Root checked={unique} onCheckedChange={(details) => (unique = details.checked)}>
-				<Switch.Control><Switch.Thumb /></Switch.Control>
-				<Switch.Label>Unique</Switch.Label>
-				<Switch.HiddenInput />
-			</Switch.Root>
+			<Switch label="Required" bind:checked={required} />
+			<Switch label="Unique" bind:checked={unique} />
 		</div>
 
 		<div class="actions">
 			{#if editing}
-				<Button variant="secondary" onclick={blank} disabled={busy}>Cancel</Button>
+				<Button variant="subtle" onclick={blank} disabled={busy}>Cancel</Button>
 			{/if}
 
 			<Button type="submit" disabled={busy || (name.trim() === '' && label.trim() === '')}>
@@ -309,7 +347,7 @@
 
 	{#snippet footer()}
 		<span class="spacer"></span>
-		<Button variant="secondary" onclick={() => (open = false)}>Done</Button>
+		<Button variant="subtle" onclick={() => (open = false)}>Done</Button>
 	{/snippet}
 </Drawer>
 
@@ -338,6 +376,35 @@
 
 	.fields li:hover {
 		background: var(--row-hover);
+	}
+
+	/* A built-in field is here to be read, not pressed. */
+	.fields li.locked {
+		opacity: 0.75;
+	}
+
+	.fields li.locked:hover {
+		background: transparent;
+	}
+
+	.group {
+		margin: 0;
+		color: var(--color-text-hint);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+	}
+
+	.group.second {
+		margin-top: var(--space-5);
+		padding-top: var(--space-5);
+		border-top: 1px solid var(--color-border);
+	}
+
+	.lead {
+		margin: var(--space-1) 0 var(--space-3);
+		line-height: 1.4;
 	}
 
 	.fields li.editing {

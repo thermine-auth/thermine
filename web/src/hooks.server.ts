@@ -1,8 +1,6 @@
 import type { Handle } from '@sveltejs/kit';
 
-/** The cookie the theme is kept in. The client writes it; this reads it.
- *  lib/theme.svelte.ts uses the same name. */
-const THEME_COOKIE = 'xermess-theme';
+import { COOKIES } from '$lib/constants';
 
 /**
  * Puts the reader's theme into the HTML before it is sent.
@@ -17,7 +15,7 @@ const THEME_COOKIE = 'xermess-theme';
  * because that happens in CSS rather than after it.
  */
 export const handle: Handle = async ({ event, resolve }) => {
-	const saved = event.cookies.get(THEME_COOKIE);
+	const saved = event.cookies.get(COOKIES.theme);
 	const theme = saved === 'dark' || saved === 'light' ? saved : null;
 
 	const attributes = theme

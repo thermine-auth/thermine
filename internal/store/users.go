@@ -28,9 +28,14 @@ func (s *Store) Users(ctx context.Context, q UserQuery) ([]model.User, int64, er
 
 	if search := strings.TrimSpace(q.Search); search != "" {
 		like := "%" + strings.ToLower(search) + "%"
-		// The fields live in a JSON column; casting it to text searches every
-		// one of them at once, which is what a single search box should do.
-		query = query.Where("LOWER(email) LIKE ? OR LOWER(data::text) LIKE ?", like, like)
+		// The built-in fields are columns and are searched as such; the
+		// additional ones live in a JSON column, and casting it to text
+		// searches every one of them at once. One box, the whole record.
+		query = query.Where(
+			`LOWER(email) LIKE ? OR LOWER(first_name) LIKE ? OR LOWER(last_name) LIKE ?
+			 OR LOWER(data::text) LIKE ?`,
+			like, like, like, like,
+		)
 	}
 
 	if q.Verified != nil {
@@ -74,9 +79,9 @@ func (s *Store) DeleteUser(ctx context.Context, user *model.User) error {
 	return s.db.WithContext(ctx).Unscoped().Delete(user).Error
 }
 
-// FieldValueTaken reports whether another user already holds this value for a
-// field that has to be unique. `except` is the record being written, so it
-// does not clash with itself; pass uuid.Nil when creating one.
+// FieldValueTaken reports whether another user already holds this value for an
+// additional field that has to be unique. `except` is the record being
+// written, so it does not clash with itself; pass uuid.Nil when creating one.
 //
 // The values live in a JSON column, so this is a query rather than an index.
 func (s *Store) FieldValueTaken(ctx context.Context, field string, value any, except uuid.UUID) (bool, error) {

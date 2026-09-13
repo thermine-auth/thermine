@@ -12,9 +12,9 @@ import (
 	"xermess/internal/store"
 )
 
-// validate checks the record's own column. What the user-defined fields have
-// to keep is checked by normalise below, against the definitions rather than
-// against a tag.
+// validate checks the built-in fields, which are the record's own columns.
+// What the additional ones have to keep is checked by normalise below,
+// against the definitions in user_fields rather than against a tag.
 func (r *userRequest) validate() error {
 	r.clean()
 

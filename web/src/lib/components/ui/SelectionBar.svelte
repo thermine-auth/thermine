@@ -2,6 +2,8 @@
 	import type { Snippet } from 'svelte';
 	import { fly } from 'svelte/transition';
 
+	import Button from './Button.svelte';
+
 	type Props = {
 		/** How many rows are ticked. The bar shows itself when this is
 		    anything but zero. */
@@ -25,7 +27,7 @@
 			{count === 1 ? noun : `${noun}s`}
 		</span>
 
-		<button type="button" class="reset" onclick={onReset}>Reset</button>
+		<Button size="sm" variant="subtle" onclick={onReset}>Reset</Button>
 
 		<span class="actions">
 			{@render children()}
@@ -61,24 +63,6 @@
 		color: var(--color-text);
 	}
 
-	.reset {
-		height: 30px;
-		padding: 0 var(--space-3);
-		border: none;
-		border-radius: var(--radius-pill);
-		background: var(--color-secondary);
-		color: var(--color-text);
-		font: inherit;
-		font-size: var(--text-sm);
-		font-weight: 600;
-		cursor: pointer;
-		transition: background-color var(--speed-fast);
-	}
-
-	.reset:hover {
-		background: var(--color-secondary-alt);
-	}
-
 	.actions {
 		display: flex;
 		align-items: center;
@@ -86,9 +70,9 @@
 		margin-left: var(--space-3);
 	}
 
-	/* The buttons are rounded like the bar that holds them. They come from
-	   the caller, hence the global match. */
-	.actions :global(button) {
+	/* Every button in the bar is rounded like the bar that holds it. The ones
+	   in .actions come from the caller, hence the global match. */
+	.bar :global(.control) {
 		border-radius: var(--radius-pill);
 	}
 </style>

@@ -229,7 +229,7 @@
 		display: flex;
 		align-items: center;
 		gap: var(--space-2);
-		height: 34px;
+		height: var(--nav-item-height);
 		padding: 0 var(--space-2);
 		border-radius: var(--radius-sm);
 		color: var(--color-text);
@@ -290,7 +290,7 @@
 		display: flex;
 		align-items: center;
 		gap: var(--space-2);
-		height: 34px;
+		height: var(--nav-item-height);
 		padding: 0 var(--space-2);
 		border: none;
 		border-radius: var(--radius-sm);

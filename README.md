@@ -83,13 +83,20 @@ scripts/lib.sh                 what those scripts share: .env, the DSN, checks
 scripts/Dockerfile             the API image, built from the repository root
 
 web/src/lib/api/               the typed client for this API
-web/src/lib/components/ui/     the building blocks: Button, Card, TextField, Icon…
-web/src/lib/components/admin/  the panel's own pieces: header, tables, stats
+web/src/lib/query/             the query cache: its client, its keys, its options
+web/src/lib/components/ui/     the design system: Button, Drawer, DataTable, Tooltip…
+web/src/lib/components/layout/ the panel's frame: header, sidebar, account menu
+web/src/lib/components/users/  the users feature: table, drawers, field inputs
+web/src/lib/components/activity/ the dashboard's counts and its activity list
+web/src/lib/components/profile/  the profile page's sections
+web/src/lib/state/             what the panel remembers: the theme, the sidebar
+web/src/lib/utils/             how values are shown
+web/src/lib/data/demo.ts       placeholder rows for the sections with no backend
+web/src/lib/server/api.ts      calling the API from a server load, with the session
+web/src/lib/constants.ts       the names both sides agree on: the cookies
 web/src/lib/styles/            fonts.css, tokens.css, base.css, ark.css
-web/src/lib/theme.svelte.ts    the light/dark/auto choice
 web/src/routes/admin/login/    the sign-in page
-web/src/routes/admin/(panel)/  dashboard, logs, profile — everything behind a session
-web/src/lib/demo.ts            placeholder rows for the sections with no backend
+web/src/routes/admin/(panel)/  everything behind a session
 ```
 
 ### The API packages
@@ -108,6 +115,29 @@ A handler reads a request, asks the store, and answers. Nothing else: the
 rules live in `validation.go` and return a `respond.Fault` carrying the status
 to answer with, and `respond.Failure` turns that into the answer — or logs
 anything that is not a Fault and says only that something went wrong.
+
+### Data in the panel
+
+A page arrives already rendered: `+page.server.ts` asks the API with the
+session cookie, so the first paint costs no request from the browser. What
+that load returned then seeds a TanStack Query cache — `usersOptions(params,
+data.page)` — and everything after the first paint goes through the cache
+instead of through the page.
+
+That is what a save does: the drawer runs a `createMutation`, and on success
+invalidates `keys.users.all`. The list refills itself without a navigation,
+the URL does not change, and nothing else on the page is thrown away. The
+refresh button is the same invalidation by hand, and the cache refills on its
+own when someone comes back to the tab.
+
+Signing out calls `queryClient.clear()`: what one administrator saw is not for
+whoever signs in next on that browser.
+
+```
+web/src/lib/query/client.ts    the client, and what its defaults mean
+web/src/lib/query/keys.ts      the names the cache knows things by
+web/src/lib/query/users.ts     the options for the user list and the fields
+```
 
 ### The store
 
@@ -189,9 +219,9 @@ production one: `adapter-auto` finds no known platform here, so nothing
 deployable is produced. Choose an adapter — `adapter-node` for running it
 yourself — when it is time to deploy.
 
-Then open http://localhost:5173/admin/login and sign in with
-`XERMESS_ADMIN_USERNAME` and `XERMESS_ADMIN_PASSWORD`. Signing in leads to
-`/admin/dashboard`.
+Then open http://localhost:5173/admin/login. A panel with no administrator
+sends you to `/admin/new-super-admin` to make the first one; after that,
+signing in leads to `/admin/dashboard`.
 
 The header carries the two top-level areas — Dashboard and Logs — with the
 account menu on the right, which is where Profile and Sign out live. The
@@ -212,17 +242,30 @@ soon as its section talks to the API.
 
 ### Users and their fields
 
-A user has an email and a verified flag as columns. Everything else an
-organisation wants to keep is defined at runtime in `user_fields` and stored
-in `users.data`, so adding a first name or a "phone verified" flag is a row in
-a table rather than a migration.
+A user record is made of two kinds of field, and the difference is where the
+value lives.
 
-`internal/model/user_field.go` owns what a field means: the types on offer
-(`text`, `number`, `bool`, `email`, `date`) and `Normalise`, which checks a
-submitted value and returns what should be stored — the one place to change
-when adding a type. The panel builds both its table and its form from the same
-list, so a new field appears as a column and an input without any code
-changing.
+**Built-in fields are columns of `users`**: `email`, `email_verified`,
+`first_name`, `last_name`, `is_active`. Every installation has them, the
+database enforces them, and they can be indexed and searched properly. There
+is no table of them — `BuiltinFields` in `internal/model/user_field.go` only
+*describes* those columns so the panel can draw them, and a test pins that
+description to the columns so the two cannot drift.
+
+**Additional fields are rows of `user_fields`**, with their values in
+`users.data`. A super admin adds them in the panel, so keeping a phone number,
+a nickname or a joined-on date needs no migration. Their names may not collide
+with a built-in one: two fields with one name would be two places to look for
+the same thing, so the API refuses it.
+
+`internal/model/user_field.go` owns what a field means for both kinds: the
+types on offer (`text`, `number`, `bool`, `email`, `date`), the rules a value
+keeps (required, unique, a smallest and largest value, a prefix), and
+`Normalise`, which checks a submitted value and returns what should be stored.
+
+The API returns both kinds in one list, built-ins first, each marked
+`builtin`. The panel draws its table and its form from that list, so a field
+someone adds appears as a column and an input without any code changing.
 
 Searching matches the email or any stored value, because `data` is searched as
 text; the search and the verified filter live in the URL, so the server renders
@@ -372,13 +415,21 @@ Never edit a migration that has already run anywhere. Add a new one.
 
 ### The first administrator
 
-`20260912113137_seed_admin.go` creates the four roles and one administrator
-holding `super_admin`, from `XERMESS_ADMIN_USERNAME` and
-`XERMESS_ADMIN_PASSWORD`. The password is stored as a bcrypt hash, never as
-itself. With either setting empty the roles are still created and no
-administrator is, so a test database does not need credentials.
+The migration creates no administrator, and no password exists in any file.
 
-Rolling this migration back deletes that administrator and the roles.
+A fresh database has roles but nobody to sign in as, and the API says so:
+`GET /api/v1/admin/setup` answers `{"required": true}`. The sign-in page asks
+before it draws itself and sends whoever is there to `/admin/new-super-admin`,
+which takes a first name, a last name, an email and a password of at least ten
+characters, makes a `super_admin` with them, and signs that person in.
+
+`POST /api/v1/admin/setup` is the one open route that writes anything, so it
+is worth knowing why that is safe: the check for existing administrators and
+the insert are one transaction, and it refuses with a 409 the moment there is
+one. It is a door that closes behind the first person through it.
+
+The address is the account — it is both the email and the username someone
+signs in with, so setup asks for one thing rather than two.
 
 ## Configuration
 

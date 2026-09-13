@@ -1,7 +1,6 @@
 <script lang="ts">
-	import PageHeading from '$lib/components/admin/PageHeading.svelte';
-	import { Badge, DataTable, type Column } from '$lib/components/ui';
-	import { demoFlows } from '$lib/demo';
+	import { Badge, type Column, DataTable, PageHeading } from '$lib/components/ui';
+	import { demoFlows } from '$lib/data/demo';
 
 	const columns: Column[] = [
 		{ key: 'name', min: '10rem' },

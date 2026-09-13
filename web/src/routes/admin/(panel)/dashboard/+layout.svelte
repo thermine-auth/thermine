@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { untrack, type Snippet } from 'svelte';
-	import Sidebar from '$lib/components/admin/Sidebar.svelte';
-	import { rememberSidebar } from '$lib/sidebar';
+	import Sidebar from '$lib/components/layout/Sidebar.svelte';
+	import { rememberSidebar } from '$lib/state/sidebar';
 	import type { LayoutData } from './$types';
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();

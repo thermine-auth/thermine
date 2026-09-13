@@ -1,12 +1,14 @@
 import { browser } from '$app/environment';
 
+import { COOKIES } from '$lib/constants';
+
 /** The panel is either light or dark. */
 export type Theme = 'light' | 'dark';
 
 /** The theme is kept in a cookie rather than localStorage so the server can
- *  read it and send the page already themed. hooks.server.ts reads this same
- *  name; the attribute below is what the stylesheet keys off. */
-const COOKIE = 'xermess-theme';
+ *  read it and send the page already themed. The attribute below is what the
+ *  stylesheet keys off. */
+const COOKIE = COOKIES.theme;
 const ATTRIBUTE = 'data-theme';
 const ONE_YEAR = 60 * 60 * 24 * 365;
 

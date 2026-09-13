@@ -18,15 +18,20 @@
 		onOpen?: (row: Row) => void;
 		/** What that row's arrow is called, for anyone not looking at it. */
 		label?: (row: Row) => string;
-		/** Bind this to hold the ids of the ticked rows. Binding it is what
-		    puts a column of checkboxes at the front of the table. */
-		selection?: string[];
+		/** The ids of the ticked rows. Passing it, together with onSelect,
+		    is what puts a column of checkboxes at the front of the table.
+		
+		    The caller owns the list: the table says what was ticked and shows
+		    what it is given, so there is one copy of the truth rather than two
+		    that can drift apart. */
+		selected?: string[];
+		onSelect?: (ids: string[]) => void;
 	};
 
-	let { columns, rows, empty, row, onOpen, label, selection = $bindable() }: Props = $props();
+	let { columns, rows, empty, row, onOpen, label, selected, onSelect }: Props = $props();
 
-	const selectable = $derived(selection !== undefined);
-	const ticked = $derived(new Set(selection ?? []));
+	const selectable = $derived(selected !== undefined && onSelect !== undefined);
+	const ticked = $derived(new Set(selected ?? []));
 	const allTicked = $derived(rows.length > 0 && rows.every((item) => ticked.has(item.id)));
 
 	/** Ticked, part-ticked, or not, for the box in the header. */
@@ -34,23 +39,14 @@
 		allTicked ? true : rows.some((item) => ticked.has(item.id)) ? 'indeterminate' : false
 	);
 
-	/** A row that has been searched or filtered away cannot be acted on, so
-	    it does not stay counted either. */
-	$effect(() => {
-		if (selection === undefined) return;
-
-		const ids = new Set(rows.map((item) => item.id));
-		const kept = selection.filter((id) => ids.has(id));
-
-		if (kept.length !== selection.length) selection = kept;
-	});
-
 	function tickAll(checked: boolean) {
-		selection = checked ? rows.map((item) => item.id) : [];
+		onSelect?.(checked ? rows.map((item) => item.id) : []);
 	}
 
 	function tick(id: string, checked: boolean) {
-		selection = checked ? [...(selection ?? []), id] : (selection ?? []).filter((it) => it !== id);
+		const ids = selected ?? [];
+
+		onSelect?.(checked ? [...ids, id] : ids.filter((it) => it !== id));
 	}
 
 	/** No labels, no header: the activity and session tables are lists of
@@ -268,12 +264,12 @@
 	}
 
 	/* The arrow is quiet until the row is under the pointer. */
-	.pin :global(.icon-button) {
+	.pin :global(.control) {
 		margin-left: auto;
 		color: var(--color-text-disabled);
 	}
 
-	tr.clickable:hover .pin :global(.icon-button) {
+	tr.clickable:hover .pin :global(.control) {
 		color: var(--color-text);
 	}
 

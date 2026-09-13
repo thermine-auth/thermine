@@ -6,10 +6,20 @@ import type {
 	FieldRules,
 	LogEntry,
 	Overview,
+	SetupInput,
 	UserField,
 	UserInput,
+	UserPage,
 	UserRecord
 } from './types';
+
+/** Setting the panel up: the two calls that work without a session, because
+    before the first administrator exists there is nobody to be. */
+export const setupApi = {
+	status: (fetcher?: Fetch) => api.get<{ required: boolean }>('/admin/setup', fetcher),
+
+	create: (input: SetupInput) => api.post<{ admin: { id: string } }>('/admin/setup', input)
+};
 
 /** Every call the admin panel makes. */
 export const adminApi = {
@@ -30,6 +40,20 @@ export const adminApi = {
 
 /** The users an organisation manages, and the shape of their records. */
 export const usersApi = {
+	/** A page of users. The search and the filter are the same ones the URL
+	    carries, so a link and a query key describe the same list. */
+	list: (params: { search?: string; verified?: string }, fetcher?: Fetch) => {
+		const query = new URLSearchParams();
+		if (params.search) query.set('search', params.search);
+		if (params.verified === 'true' || params.verified === 'false') {
+			query.set('verified', params.verified);
+		}
+
+		return api.get<UserPage>(`/admin/users?${query}`, fetcher);
+	},
+
+	fields: (fetcher?: Fetch) => api.get<{ fields: UserField[] }>('/admin/user-fields', fetcher),
+
 	create: (input: UserInput) => api.post<{ user: UserRecord }>('/admin/users', input),
 
 	update: (id: string, input: UserInput) =>

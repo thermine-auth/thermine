@@ -1,4 +1,4 @@
-export { adminApi, usersApi } from './admin';
+export { adminApi, setupApi, usersApi } from './admin';
 export { ApiError, type Fetch } from './client';
 export type {
 	Admin,
@@ -9,6 +9,8 @@ export type {
 	FieldType,
 	LogEntry,
 	Overview,
+	SetupInput,
+	UserBuiltins,
 	UserField,
 	UserInput,
 	UserPage,

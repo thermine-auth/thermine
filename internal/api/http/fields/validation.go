@@ -39,6 +39,14 @@ func (r *fieldRequest) newField() (*model.UserField, error) {
 		return nil, err
 	}
 
+	if model.IsBuiltinField(r.Name) {
+		return nil, respond.Fault{
+			Status: http.StatusConflict,
+			Message: r.Name + " is a built-in field: every record has one already, " +
+				"and two fields with one name would be two places to look",
+		}
+	}
+
 	field := &model.UserField{Name: r.Name, Type: model.FieldType(r.Type)}
 	if err := r.rulesRequest.applyTo(field); err != nil {
 		return nil, err

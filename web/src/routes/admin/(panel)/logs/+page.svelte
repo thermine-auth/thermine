@@ -1,5 +1,5 @@
 <script lang="ts">
-	import ActivityTable from '$lib/components/admin/ActivityTable.svelte';
+	import ActivityTable from '$lib/components/activity/ActivityTable.svelte';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();

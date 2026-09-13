@@ -1,13 +1,16 @@
 <script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { useQueryClient } from '@tanstack/svelte-query';
 	import { RiLogoutBoxRLine } from 'svelte-remixicon';
 	import { adminApi } from '$lib/api';
-	import { Button, Icon } from '$lib/components/ui';
+	import { Button, type Variant } from '$lib/components/ui';
 
-	type Props = { variant?: 'solid' | 'secondary' | 'ghost' };
+	type Props = { variant?: Variant };
 
-	let { variant = 'secondary' }: Props = $props();
+	let { variant = 'subtle' }: Props = $props();
+
+	const queryClient = useQueryClient();
 
 	let signingOut = $state(false);
 
@@ -18,14 +21,16 @@
 			await adminApi.logout();
 		} finally {
 			// However the server answered, this browser is done with the
-			// session: drop what was loaded with it and go to the sign-in page.
+			// session: drop everything that was loaded with it — the pages
+			// and the cache behind them — and go to the sign-in page. What
+			// one administrator saw is not for whoever signs in next.
+			queryClient.clear();
 			await invalidateAll();
 			await goto(resolve('/admin/login'), { replaceState: true });
 		}
 	}
 </script>
 
-<Button {variant} onclick={signOut} disabled={signingOut}>
-	<Icon icon={RiLogoutBoxRLine} />
+<Button {variant} icon={RiLogoutBoxRLine} loading={signingOut} onclick={signOut}>
 	{signingOut ? 'Signing out…' : 'Sign out'}
 </Button>

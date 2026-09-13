@@ -9,7 +9,7 @@
 	} from 'svelte-remixicon';
 	import type { ActivityEvent } from '$lib/api';
 	import { DataTable, Icon, type Column } from '$lib/components/ui';
-	import { formatDateTime } from '$lib/format';
+	import { formatDateTime } from '$lib/utils/format';
 
 	type Props = { events: ActivityEvent[] };
 

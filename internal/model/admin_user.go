@@ -11,8 +11,8 @@ type AdminUser struct {
 	FirstName    string `gorm:"size:100;not null" json:"first_name"`
 	LastName     string `gorm:"size:100;not null" json:"last_name"`
 	PasswordHash string `gorm:"size:255;not null" json:"-"`
-
-	Status Status `gorm:"type:varchar(32);index;not null;default:invited" json:"status"`
+	IsActive     bool   `gorm:"-" json:"is_active"`
+	Status       Status `gorm:"type:varchar(32);index;not null;default:invited" json:"status"`
 
 	EmailVerifiedAt *time.Time `json:"email_verified_at,omitempty"`
 	LastLoginAt     *time.Time `json:"last_login_at,omitempty"`

@@ -1,7 +1,6 @@
 <script lang="ts">
-	import PageHeading from '$lib/components/admin/PageHeading.svelte';
-	import { DataTable, type Column } from '$lib/components/ui';
-	import { demoRoles } from '$lib/demo';
+	import { type Column, DataTable, PageHeading } from '$lib/components/ui';
+	import { demoRoles } from '$lib/data/demo';
 
 	const columns: Column[] = [
 		{ key: 'name', min: '9rem' },

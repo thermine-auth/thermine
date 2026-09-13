@@ -11,6 +11,15 @@ export type Admin = {
 	last_login_at?: string;
 };
 
+/** What the first administrator is made from. There is no username: the
+    address is the account. */
+export type SetupInput = {
+	email: string;
+	password: string;
+	first_name: string;
+	last_name: string;
+};
+
 export type ActivityEvent = {
 	id: string;
 	action: string;
@@ -57,13 +66,21 @@ export type FieldRules = {
 	starts_with: string;
 };
 
-/** One user-defined column of the user record. */
+/** One field of a user record.
+ *
+ *  `builtin` says which kind it is: a built-in field is a column of the
+ *  record — every installation has it, and it cannot be changed or removed —
+ *  while an additional one was added in the panel and its values live in
+ *  `data`. The API returns both in one list, built-ins first. */
 export type UserField = FieldRules & {
-	id: string;
+	/** The row this field is. A built-in field is a column rather than a row,
+	    so it has none. */
+	id?: string;
 	name: string;
 	label: string;
 	type: FieldType;
 	position: number;
+	builtin: boolean;
 };
 
 /** What the panel sends when adding a field. A field's name and type are
@@ -75,21 +92,26 @@ export type FieldInput = FieldRules & {
 	type: FieldType;
 };
 
-/** A user. Everything beyond the email and its verified flag lives in `data`,
-    described by the fields above. */
-export type UserRecord = {
-	id: string;
+/** The built-in fields of a user record: the columns every installation has. */
+export type UserBuiltins = {
 	email: string;
 	email_verified: boolean;
+	first_name: string;
+	last_name: string;
+	is_active: boolean;
+};
+
+/** A user. The built-in fields are its own properties; everything an
+    organisation added lives in `data`, keyed by field name. */
+export type UserRecord = UserBuiltins & {
+	id: string;
 	data: Record<string, unknown> | null;
 	created_at: string;
 	updated_at: string;
 };
 
 /** What the panel sends when creating or updating a user. */
-export type UserInput = {
-	email: string;
-	email_verified: boolean;
+export type UserInput = UserBuiltins & {
 	data: Record<string, unknown>;
 };
 

@@ -3,22 +3,14 @@
 	import { resolve } from '$app/paths';
 	import { RiShieldKeyholeLine } from 'svelte-remixicon';
 	import { adminApi, ApiError } from '$lib/api';
-	import {
-		Alert,
-		Button,
-		Card,
-		Icon,
-		PasswordField,
-		TextField,
-		ThemeToggle
-	} from '$lib/components/ui';
+	import { Alert, Button, Card, Icon, Input, PasswordInput, ThemeToggle } from '$lib/components/ui';
 
-	let username = $state('');
+	let email = $state('');
 	let password = $state('');
 	let error = $state('');
 	let submitting = $state(false);
 
-	const canSubmit = $derived(username.trim() !== '' && password !== '' && !submitting);
+	const canSubmit = $derived(email.trim() !== '' && password !== '' && !submitting);
 
 	async function signIn(event: SubmitEvent) {
 		event.preventDefault();
@@ -28,7 +20,7 @@
 		submitting = true;
 
 		try {
-			await adminApi.login(username, password);
+			await adminApi.login(email.trim(), password);
 
 			// The session changed, so anything already loaded is stale.
 			await invalidateAll();
@@ -65,19 +57,20 @@
 					<Alert>{error}</Alert>
 				{/if}
 
-				<TextField
-					label="Username"
-					bind:value={username}
+				<Input
+					label="Email"
+					bind:value={email}
+					type="email"
 					disabled={submitting}
 					required
-					autocomplete="username"
+					autocomplete="email"
 					autocapitalize="none"
 					spellcheck={false}
 				/>
 
-				<PasswordField label="Password" bind:value={password} disabled={submitting} />
+				<PasswordInput label="Password" bind:value={password} disabled={submitting} required />
 
-				<Button type="submit" disabled={!canSubmit}>
+				<Button type="submit" size="lg" loading={submitting} disabled={!canSubmit}>
 					{submitting ? 'Signing in…' : 'Sign in'}
 				</Button>
 			</form>
