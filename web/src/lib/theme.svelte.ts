@@ -3,29 +3,40 @@ import { browser } from '$app/environment';
 /** The panel is either light or dark. */
 export type Theme = 'light' | 'dark';
 
-/** Where the choice is kept, and the attribute the stylesheet reads. The
- *  inline script in app.html uses the same two names to apply the theme
- *  before the first paint; change them together. */
-const STORAGE_KEY = 'xermess-theme';
+/** The theme is kept in a cookie rather than localStorage so the server can
+ *  read it and send the page already themed. hooks.server.ts reads this same
+ *  name; the attribute below is what the stylesheet keys off. */
+const COOKIE = 'xermess-theme';
 const ATTRIBUTE = 'data-theme';
+const ONE_YEAR = 60 * 60 * 24 * 365;
 
 function isTheme(value: unknown): value is Theme {
 	return value === 'light' || value === 'dark';
 }
 
-/** The theme to start with: what was chosen last time, or what the system
- *  prefers for someone who has not chosen yet. */
+function fromCookie(): Theme | null {
+	const match = document.cookie.match(new RegExp(`(?:^|; )${COOKIE}=([^;]*)`));
+	const value = match?.[1];
+
+	return isTheme(value) ? value : null;
+}
+
+/** What the page is currently showing: the attribute the server set, or the
+ *  system preference when it set none. */
 function initial(): Theme {
 	if (!browser) return 'light';
 
-	try {
-		const saved = localStorage.getItem(STORAGE_KEY);
-		if (isTheme(saved)) return saved;
-	} catch {
-		// Private browsing can make localStorage throw on read.
-	}
+	const attribute = document.documentElement.getAttribute(ATTRIBUTE);
+	if (isTheme(attribute)) return attribute;
 
-	return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+	return (
+		fromCookie() ?? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+	);
+}
+
+/** Whether to animate. Someone who asked for less motion gets none. */
+function wantsMotion(): boolean {
+	return browser && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
 class ThemeState {
@@ -36,20 +47,28 @@ class ThemeState {
 		this.set(this.current === 'dark' ? 'light' : 'dark');
 	}
 
-	/** Applies a theme: the attribute drives the stylesheet, and the stored
-	 *  value is what the inline script reads on the next load. */
+	/** Applies a theme and remembers it. */
 	set(theme: Theme) {
-		this.current = theme;
-
-		if (!browser) return;
-
-		document.documentElement.setAttribute(ATTRIBUTE, theme);
-
-		try {
-			localStorage.setItem(STORAGE_KEY, theme);
-		} catch {
-			// Not being able to remember the choice is not worth an error.
+		if (!browser) {
+			this.current = theme;
+			return;
 		}
+
+		const apply = () => {
+			this.current = theme;
+			document.documentElement.setAttribute(ATTRIBUTE, theme);
+			document.cookie = `${COOKIE}=${theme}; path=/; max-age=${ONE_YEAR}; samesite=lax`;
+		};
+
+		// A view transition cross-fades the old page into the new one, so the
+		// whole panel changes together rather than each surface animating on
+		// its own schedule. Browsers without it just get the change.
+		if (document.startViewTransition && wantsMotion()) {
+			document.startViewTransition(apply);
+			return;
+		}
+
+		apply();
 	}
 }
 

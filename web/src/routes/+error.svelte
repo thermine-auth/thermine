@@ -4,7 +4,7 @@
 </script>
 
 <svelte:head>
-	<title>{page.status} · xermess</title>
+	<title>{page.status} · xermess admin</title>
 </svelte:head>
 
 <main>

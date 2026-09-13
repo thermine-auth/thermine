@@ -40,7 +40,7 @@ Run `make` on its own for the full list, grouped by what it is for:
 | Development | `run`, `build`, `clean`                                              |
 | Quality     | `check` (fmt + vet + test), `fmt`, `vet`, `test`, `tidy`             |
 | Database    | `migrate-diff name=x`, `migrate-apply`, `migrate-status`, `migrate-hash`, `migrate-lint` |
-| Frontend    | `web-install`, `web-dev`, `web-build`                                |
+| Frontend    | `web-install`, `web-dev`, `web-build`, `web-start`                   |
 | Setup       | `setup` (create `.env`), `tools`                                     |
 
 ## Layout
@@ -113,6 +113,16 @@ make run          # the API, on :8080
 make web-dev      # the panel, on :5173
 ```
 
+`make web-start` builds the panel and serves that build on :4173, which is how
+to check a production build locally. That is a different origin from the dev
+server, so :4173 has to be in `XERMESS_CORS_ORIGINS` too — it is in
+`.env.example`. An origin missing from that list has its responses discarded
+by the browser, which the panel can only report as not being able to reach
+the server. It is Vite's preview server, not a
+production one: `adapter-auto` finds no known platform here, so nothing
+deployable is produced. Choose an adapter — `adapter-node` for running it
+yourself — when it is time to deploy.
+
 Then open http://localhost:5173/admin/login and sign in with
 `XERMESS_ADMIN_USERNAME` and `XERMESS_ADMIN_PASSWORD`. Signing in leads to
 `/admin/dashboard`.
@@ -123,15 +133,25 @@ page is real; Administrators, Roles, API keys and Webhooks render the
 placeholder rows in `lib/demo.ts` and are marked as such in the interface.
 Delete a block from that file as soon as its section talks to the API.
 
-The panel runs in the browser (`ssr = false`): it talks to the API on its own
-origin with the session cookie, which is why `XERMESS_CORS_ORIGINS` has to
-list the panel's address, and why `web/.env` has to name the API in
-`PUBLIC_API_URL`.
+`web/.env` names the API in `PUBLIC_API_URL`, used both by the server when it
+renders a page and by the browser for signing in and out — which is why
+`XERMESS_CORS_ORIGINS` has to list the panel's own address.
 
-**Loading.** The session check lives in `admin/(panel)/+layout.ts` and the
-page data in `overview/+page.ts`. Loading in `load` rather than in `onMount`
-is what lets SvelteKit redirect before a page renders, run requests in
-parallel, and reload them on `invalidateAll()` after signing in or out.
+Server-side rendering reads the session cookie the API set. That works
+locally because cookies ignore port numbers, so a cookie set by `:8080` is
+sent to `:5173`. Across two real domains it would not be: the API would have
+to set the cookie on a domain that covers both.
+
+**Rendering.** Pages are rendered on the server, which is what makes a reload
+show the finished page rather than assembling one: the theme, the title and
+the content are all in the first response. That means the data has to be
+fetched on the server too, so the loads are `+page.server.ts` and
+`+layout.server.ts`, and `lib/server/api.ts` forwards the session cookie to
+the API — a fetch made by the server carries none of the browser's cookies on
+its own.
+
+Signing in and out still happen in the browser, followed by `invalidateAll()`
+so the server loads run again with the new session.
 
 **Components.** `lib/components/ui` holds the building blocks and
 `lib/components/admin` the pieces only this panel uses. Pages compose those
@@ -162,11 +182,24 @@ by the block darkening (`#e4e8ec` to `#dce0e5`) while the label goes from
 `lib/styles/ark.css`.
 
 **Theme.** Light or dark, switched by the toggle in the header — one click,
-no menu — and remembered in `localStorage`. Someone who has not chosen yet
-gets whatever their system prefers. A small script in `app.html` applies the
-saved choice before the first paint, so a reader who chose dark never sees a
-flash of the light theme. The stylesheet reads `data-theme` on `<html>`;
-`lib/theme.svelte.ts` is what sets it.
+no menu — and remembered in a cookie.
+
+The cookie rather than `localStorage` is the point: `hooks.server.ts` reads it
+and writes `data-theme` straight onto the `<html>` tag, so the page arrives
+already dark or light. Nothing has to be corrected after the fact, which is
+what a flash on refresh actually is. A reader who has not chosen yet gets no
+attribute, leaving the `prefers-color-scheme` rules in `tokens.css` to decide
+— also before the first paint, because that happens in CSS rather than after
+it.
+
+The toggle's icon is chosen in CSS from that same attribute rather than in
+JavaScript, so the server renders the right one and the browser has nothing
+to correct when it hydrates.
+
+Switching is animated as one cross-fade of the whole page through the View
+Transitions API, rather than per-element transitions that each start at a
+slightly different moment. Browsers without it simply change. Both that and
+the toggle's own icon animation stop at `prefers-reduced-motion`.
 
 **Fonts.** Product Sans for text and Consolas for code, both loaded with
 `local()` only. Neither can be bundled — Product Sans is Google's corporate

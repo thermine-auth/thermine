@@ -156,3 +156,7 @@ web-dev: ## Run the frontend dev server
 .PHONY: web-build
 web-build: ## Build the frontend
 	cd $(WEB_DIR) && bun run build
+
+.PHONY: web-start
+web-start: web-build ## Build the frontend and serve it on :4173
+	cd $(WEB_DIR) && bun run preview

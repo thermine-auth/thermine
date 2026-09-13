@@ -42,7 +42,7 @@
 </script>
 
 <svelte:head>
-	<title>Sign in · xermess</title>
+	<title>Sign in · xermess admin</title>
 </svelte:head>
 
 <main>

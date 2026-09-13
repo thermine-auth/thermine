@@ -46,8 +46,14 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 			body: body === undefined ? undefined : JSON.stringify(body)
 		});
 	} catch {
-		// fetch only rejects when there was no answer at all.
-		throw new ApiError(0, 'Cannot reach the server. Is it running?');
+		// fetch rejects both when the server never answered and when the
+		// browser discarded the answer, which is what a missing CORS header
+		// looks like from here. The two are indistinguishable to script, so
+		// the message names both.
+		throw new ApiError(
+			0,
+			`Could not reach ${BASE_URL}. It may be down, or this origin may not be in its XERMESS_CORS_ORIGINS.`
+		);
 	}
 
 	const payload = await response.json().catch(() => ({}));

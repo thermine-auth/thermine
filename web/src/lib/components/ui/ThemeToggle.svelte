@@ -2,20 +2,26 @@
 	import { RiMoonLine, RiSunLine } from 'svelte-remixicon';
 	import { theme } from '$lib/theme.svelte';
 	import Icon from './Icon.svelte';
-
-	const isDark = $derived(theme.current === 'dark');
 </script>
 
-<!-- The icon shows the theme you would switch to, which is what a reader
-     expects from a control they are about to click. -->
+<!--
+	Both icons are always rendered and CSS decides which one is shown, keyed on
+	the data-theme the server set. Choosing in JavaScript instead would mean
+	the server rendered whichever icon it guessed and the browser corrected it
+	after hydrating, which is a flicker in the corner of the screen on every
+	load. This way it is right in the first frame, and the two icons can turn
+	into each other rather than being swapped.
+-->
 <button
 	type="button"
 	onclick={() => theme.toggle()}
-	title={isDark ? 'Switch to the light theme' : 'Switch to the dark theme'}
-	aria-label={isDark ? 'Switch to the light theme' : 'Switch to the dark theme'}
-	aria-pressed={isDark}
+	title="Switch between the light and dark theme"
+	aria-label="Switch between the light and dark theme"
 >
-	<Icon icon={isDark ? RiSunLine : RiMoonLine} size="1.125rem" />
+	<span class="icons">
+		<span class="moon"><Icon icon={RiMoonLine} size="1.125rem" /></span>
+		<span class="sun"><Icon icon={RiSunLine} size="1.125rem" /></span>
+	</span>
 </button>
 
 <style>
@@ -29,10 +35,77 @@
 		background: transparent;
 		color: inherit;
 		cursor: pointer;
-		transition: background-color var(--speed-fast);
+		transition:
+			background-color var(--speed-fast),
+			transform var(--speed-fast);
 	}
 
 	button:hover {
 		background: color-mix(in srgb, currentcolor, transparent 88%);
+	}
+
+	button:active {
+		transform: scale(0.92);
+	}
+
+	.icons {
+		position: relative;
+		display: grid;
+		place-items: center;
+		width: 1.125rem;
+		height: 1.125rem;
+	}
+
+	.moon,
+	.sun {
+		position: absolute;
+		display: grid;
+		place-items: center;
+		transition:
+			opacity 200ms ease,
+			transform 300ms cubic-bezier(0.4, 0, 0.2, 1);
+	}
+
+	/* The icon shows the theme you would switch to: a moon while light, a sun
+	   while dark. The hidden one waits rotated a quarter turn away, so the
+	   pair turn into each other when the theme changes. */
+	.sun {
+		opacity: 0;
+		transform: rotate(-90deg) scale(0.5);
+	}
+
+	:global([data-theme='dark']) .sun {
+		opacity: 1;
+		transform: rotate(0) scale(1);
+	}
+
+	:global([data-theme='dark']) .moon {
+		opacity: 0;
+		transform: rotate(90deg) scale(0.5);
+	}
+
+	/* Nobody has chosen yet: follow the system, the same way the palette does. */
+	@media (prefers-color-scheme: dark) {
+		:global(:root:not([data-theme='light'])) .sun {
+			opacity: 1;
+			transform: rotate(0) scale(1);
+		}
+
+		:global(:root:not([data-theme='light'])) .moon {
+			opacity: 0;
+			transform: rotate(90deg) scale(0.5);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		button,
+		.moon,
+		.sun {
+			transition: none;
+		}
+
+		button:active {
+			transform: none;
+		}
 	}
 </style>

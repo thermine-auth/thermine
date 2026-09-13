@@ -14,9 +14,22 @@ body {
 	font-size: var(--text-base);
 	line-height: var(--line-height);
 	-webkit-font-smoothing: antialiased;
-	transition:
-		background-color var(--speed),
-		color var(--speed);
+}
+
+/* The theme change is animated as one cross-fade of the whole page rather
+   than per-element transitions, which would each start at a slightly
+   different moment and read as a smear. */
+::view-transition-old(root),
+::view-transition-new(root) {
+	animation-duration: 260ms;
+	animation-timing-function: ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	::view-transition-old(root),
+	::view-transition-new(root) {
+		animation: none;
+	}
 }
 
 ::selection {
