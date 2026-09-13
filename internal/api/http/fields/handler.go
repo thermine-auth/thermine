@@ -1,0 +1,147 @@
+// Package fields answers the endpoints that describe what a user record is
+// made of: the columns an organisation adds to its users, and the rules the
+// values keep.
+package fields
+
+import (
+	"errors"
+	"log/slog"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+
+	"xermess/internal/api/http/audit"
+	"xermess/internal/api/http/respond"
+	"xermess/internal/model"
+	"xermess/internal/store"
+)
+
+// Handler holds what these endpoints need.
+type Handler struct {
+	store *store.Store
+	audit audit.Recorder
+	log   *slog.Logger
+}
+
+// New returns a Handler.
+func New(st *store.Store, recorder audit.Recorder, log *slog.Logger) *Handler {
+	return &Handler{store: st, audit: recorder, log: log}
+}
+
+// List returns the fields a user record has, in the order they are shown. The
+// panel builds both its table and its form from this.
+func (h *Handler) List(c *gin.Context) {
+	fields, err := h.store.UserFields(c.Request.Context())
+	if err != nil {
+		respond.Failure(c, h.log, err, "listing user fields failed")
+		return
+	}
+
+	c.JSON(http.StatusOK, newListResponse(fields))
+}
+
+// Create adds a field to every user record. Existing users simply have no
+// value for it until they are edited.
+func (h *Handler) Create(c *gin.Context) {
+	var req fieldRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respond.BadRequest(c, "the request body is not valid")
+		return
+	}
+
+	field, err := req.newField()
+	if err != nil {
+		respond.Failure(c, h.log, err, "validating a field failed")
+		return
+	}
+
+	// New fields go to the end.
+	field.Position = h.store.NextFieldPosition(c.Request.Context())
+
+	if err := h.store.CreateUserField(c.Request.Context(), field); err != nil {
+		if errors.Is(err, store.ErrDuplicate) {
+			respond.Conflict(c, "a field with that name already exists")
+			return
+		}
+
+		respond.Failure(c, h.log, err, "creating user field failed")
+		return
+	}
+
+	h.audit.Record(c, "user_field.created", targetType, field.Name)
+
+	c.JSON(http.StatusCreated, gin.H{"field": field})
+}
+
+// Update changes what a field expects. Its name and its type stay as they
+// are: records already hold values under that name and in that shape, and
+// changing either here would leave them behind.
+func (h *Handler) Update(c *gin.Context) {
+	field, ok := h.find(c)
+	if !ok {
+		return
+	}
+
+	var req rulesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respond.BadRequest(c, "the request body is not valid")
+		return
+	}
+
+	if err := req.applyTo(field); err != nil {
+		respond.Failure(c, h.log, err, "validating a field failed")
+		return
+	}
+
+	if err := h.store.SaveUserField(c.Request.Context(), field); err != nil {
+		respond.Failure(c, h.log, err, "updating user field failed")
+		return
+	}
+
+	h.audit.Record(c, "user_field.updated", targetType, field.Name)
+
+	c.JSON(http.StatusOK, gin.H{"field": field})
+}
+
+// Delete removes a field. The values already stored under its name stay in
+// the user records until those are next saved, at which point they are
+// dropped: nothing is destroyed by removing a column from the panel.
+func (h *Handler) Delete(c *gin.Context) {
+	field, ok := h.find(c)
+	if !ok {
+		return
+	}
+
+	if err := h.store.DeleteUserField(c.Request.Context(), field); err != nil {
+		respond.Failure(c, h.log, err, "deleting user field failed")
+		return
+	}
+
+	h.audit.Record(c, "user_field.deleted", targetType, field.Name)
+
+	c.Status(http.StatusNoContent)
+}
+
+// find loads the field named in the path, answering the request itself if
+// there is no such field.
+func (h *Handler) find(c *gin.Context) (*model.UserField, bool) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respond.BadRequest(c, "that is not a field id")
+		return nil, false
+	}
+
+	field, err := h.store.UserField(c.Request.Context(), id)
+
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		respond.NotFound(c, "no such field")
+		return nil, false
+	case err != nil:
+		respond.Failure(c, h.log, err, "loading user field failed")
+		return nil, false
+	}
+
+	return field, true
+}

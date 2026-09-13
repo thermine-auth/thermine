@@ -33,15 +33,22 @@ make web-dev
 
 ## Make targets
 
+The Makefile is the index of what can be done; anything longer than a couple
+of lines lives in `scripts/` and is called from a target. `make setup` runs
+`scripts/install.sh`, `make db-create` runs `scripts/db.sh create`, and so on
+— so there is one implementation of each, and the container, which has no
+make, can run the same scripts.
+
 Run `make` on its own for the full list, grouped by what it is for:
 
-| Group       | Targets                                                              |
-| ----------- | -------------------------------------------------------------------- |
-| Development | `run`, `build`, `clean`                                              |
-| Quality     | `check` (fmt + vet + test), `fmt`, `vet`, `test`, `tidy`             |
-| Database    | `migrate-diff name=x`, `migrate-apply`, `migrate-status`, `migrate-hash`, `migrate-lint` |
-| Frontend    | `web-install`, `web-dev`, `web-build`, `web-start`                   |
-| Setup       | `setup` (create `.env`), `tools`                                     |
+| Group           | Targets                                                                |
+| --------------- | ---------------------------------------------------------------------- |
+| Getting started | `setup`, `env`, `deps`                                                 |
+| Development     | `run`, `run-migrate`, `build`, `release`, `clean`                      |
+| Database        | `migrate-up`, `migrate-down`, `migrate-status`, `migrate-new name=x`, `db-create`, `db-reset`, `db-psql` |
+| Quality         | `check` (fmt + vet + test), `fmt`, `vet`, `test`, `tidy`               |
+| Container       | `docker-build`, `docker-run`                                           |
+| Frontend        | `web-install`, `web-dev`, `web-build`, `web-start`                     |
 
 ## Layout
 
@@ -52,13 +59,28 @@ cmd/migrate/main.go            runs migrations by hand: up, down, status
 internal/config/config.go      reads .env
 internal/database/database.go  opens the connection
 internal/database/migrate.go   applies migrations
+internal/store/                every query in the project, one file per subject
 internal/auth/auth.go          signs administrators in and out, records what they do
-internal/server/server.go      the server: middleware, routes, handlers
-internal/server/admin.go       the admin panel's endpoints
-internal/server/middleware.go  request logging, CORS, the session check
+internal/api/server.go         the engine, and the table of every route
+internal/api/http/auth/        signing in and out, and who is signed in
+internal/api/http/users/       the users an organisation manages
+internal/api/http/fields/      the fields a user record is made of
+internal/api/http/activity/    the dashboard counts and the log
+internal/api/http/middleware/  request logging, recovery, and their order
+internal/api/http/cors/        which browser origins may call the API
+internal/api/http/session/     the cookie, the session check, the current admin
+internal/api/http/respond/     how an error is written, once for every endpoint
+internal/api/http/audit/       recording what an administrator did
 internal/model/                one file per table, listed in model.All
 
 migrations/                    one Go file per migration, applied in order
+
+scripts/install.sh             set the project up on a fresh machine
+scripts/db.sh                  create, reset or open the database
+scripts/build.sh               build for release, stamping in the version
+scripts/entrypoint.sh          what the container runs: migrate, then serve
+scripts/lib.sh                 what those scripts share: .env, the DSN, checks
+scripts/Dockerfile             the API image, built from the repository root
 
 web/src/lib/api/               the typed client for this API
 web/src/lib/components/ui/     the building blocks: Button, Card, TextField, Icon…
@@ -70,12 +92,47 @@ web/src/routes/admin/(panel)/  dashboard, logs, profile — everything behind a 
 web/src/lib/demo.ts            placeholder rows for the sections with no backend
 ```
 
-Four packages, each with one job: `config` reads settings, `database` talks to
-Postgres, `model` describes the tables, `server` answers requests. Nothing
-imports `server` except `main`, and `model` imports nothing of ours at all.
+### The API packages
+
+Handlers are grouped by subject, and every group is the same four files, so a
+package you have never opened is laid out like the last one you did:
+
+```
+internal/api/http/users/handler.go     the endpoints: what happens, in order
+internal/api/http/users/request.go     the bodies and query strings it accepts
+internal/api/http/users/response.go    the shapes it answers with
+internal/api/http/users/validation.go  the rules a request has to keep
+```
+
+A handler reads a request, asks the store, and answers. Nothing else: the
+rules live in `validation.go` and return a `respond.Fault` carrying the status
+to answer with, and `respond.Failure` turns that into the answer — or logs
+anything that is not a Fault and says only that something went wrong.
+
+### The store
+
+`internal/store` is the only package that writes queries. A handler asks it
+for what it needs — `store.Users`, `store.UserField`, `store.WriteAudit` — and
+gets models back, so the handlers stay about HTTP and the queries stay in one
+place to read and change. It has its own errors, `store.ErrNotFound` and
+`store.ErrDuplicate`, which is why nothing above it imports GORM.
+
+```
+internal/store/store.go        the Store type, and the errors it returns
+internal/store/users.go        listing, searching and writing users
+internal/store/user_fields.go  the field definitions
+internal/store/admins.go       administrators, for signing in
+internal/store/sessions.go     sessions: start, find, revoke, list
+internal/store/audit.go        the activity log, and the dashboard counts
+```
+
+Each package has one job: `config` reads settings, `database` opens the
+connection, `model` describes the tables, `store` queries them, `auth` decides
+who may sign in, `api` answers requests. Nothing imports `api` except `main`,
+and `model` imports nothing of ours at all.
 
 Startup is `run` in `cmd/xermess/main.go`, top to bottom: read the
-configuration, open the database, apply migrations, serve.
+configuration, open the database, apply migrations, build the store, serve.
 
 The server is Gin with its defaults: `server.New` builds the engine and
 `engine.Run(addr)` listens. Ctrl-C stops the process immediately, so a request
@@ -108,9 +165,10 @@ SHA-256 hash of it, so a leaked database cannot be signed in with. They last
 12 hours. Signing in, failing to sign in, and signing out are all written to
 `audit_logs`.
 
-To add an endpoint: mount it in `registerRoutes` and write its handler, both in
-`internal/server/server.go`, or in `internal/server/admin.go` for the admin
-panel. Put it behind `RequireAdmin` unless it is meant to be public.
+To add an endpoint: write the handler method in the package it belongs to
+under `internal/api/http/`, then mount it in `registerRoutes` in
+`internal/api/server.go` — the one place that says which paths exist. Put it
+behind `session.Require` unless it is meant to be public.
 
 ## Admin panel
 

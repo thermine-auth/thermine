@@ -5,9 +5,18 @@ import (
 	"log/slog"
 	"os"
 
+	"xermess/internal/api"
 	"xermess/internal/config"
 	"xermess/internal/database"
-	"xermess/internal/server"
+	"xermess/internal/store"
+)
+
+// version and commit are stamped in at build time by scripts/build.sh and
+// the Dockerfile, so a running server can say which build it is. A plain
+// `go run` leaves them as they are.
+var (
+	version = "dev"
+	commit  = "unknown"
 )
 
 func main() {
@@ -20,9 +29,12 @@ func main() {
 }
 
 // run is the whole startup, in order: read the configuration, open the
-// database, apply migrations, serve. It is separate from main so every step
-// can return an error instead of exiting from the middle of the startup.
+// database, apply migrations, then serve on top of a store. It is separate
+// from main so every step can return an error instead of exiting from the
+// middle of the startup.
 func run(log *slog.Logger) error {
+	log.Info("xermess starting", "version", version, "commit", commit)
+
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -44,7 +56,10 @@ func run(log *slog.Logger) error {
 
 	log.Info("server listening", "addr", cfg.Addr)
 
+	// The store is the only thing that queries the database; the server is
+	// handed that rather than the connection itself.
+	//
 	// Run blocks until the server stops. Gin listens for us: Run is a wrapper
 	// around net/http's ListenAndServe.
-	return server.New(cfg, db, log).Run(cfg.Addr)
+	return api.New(cfg, store.New(db), log).Run(cfg.Addr)
 }

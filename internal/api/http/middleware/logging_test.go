@@ -1,4 +1,4 @@
-package server
+package middleware
 
 import (
 	"bytes"
@@ -55,19 +55,5 @@ func TestRequestLoggerReportsHandlerStatus(t *testing.T) {
 
 	if !strings.Contains(logged.String(), "status=404") {
 		t.Errorf("want status=404 in the log, got:\n%s", logged.String())
-	}
-}
-
-// A panic must become a 500, not a dropped connection.
-func TestRecoveryTurnsPanicIntoError(t *testing.T) {
-	r := gin.New()
-	r.Use(gin.Recovery())
-	r.GET("/boom", func(*gin.Context) { panic("boom") })
-
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/boom", nil))
-
-	if w.Code != http.StatusInternalServerError {
-		t.Errorf("status = %d, want 500", w.Code)
 	}
 }

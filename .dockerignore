@@ -1,0 +1,10 @@
+# Everything the image does not need. Keeping the build context small is what
+# makes `docker build` quick, and it keeps secrets out of the image.
+.env
+.git
+.gitignore
+bin/
+web/
+*.md
+LICENSE
+Makefile

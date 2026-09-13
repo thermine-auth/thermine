@@ -210,7 +210,6 @@
 		position: sticky;
 		left: 0;
 		width: 1%;
-		padding-right: 0;
 		background: var(--color-surface);
 		transition: background-color var(--speed-fast);
 	}

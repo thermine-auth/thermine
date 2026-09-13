@@ -1,4 +1,4 @@
-package server
+package api
 
 import (
 	"encoding/json"
@@ -87,55 +87,20 @@ func TestRoutes(t *testing.T) {
 	}
 }
 
-func TestCORS(t *testing.T) {
+// The matrix of who may call the API lives with the middleware, in
+// http/middleware/cors_test.go. What matters here is that the engine actually
+// mounts it: a server that forgot to would pass every test over there.
+func TestEngineAppliesCORS(t *testing.T) {
 	const allowed = "http://localhost:5173"
-
-	tests := []struct {
-		name        string
-		origin      string
-		method      string
-		wantCode    int
-		wantAllowed bool
-	}{
-		{name: "allowed origin", origin: allowed, method: http.MethodGet, wantCode: http.StatusOK, wantAllowed: true},
-		{name: "unknown origin", origin: "http://evil.test", method: http.MethodGet, wantCode: http.StatusOK},
-		{name: "no origin", origin: "", method: http.MethodGet, wantCode: http.StatusOK},
-		{name: "preflight from allowed origin", origin: allowed, method: http.MethodOptions, wantCode: http.StatusNoContent, wantAllowed: true},
-		{name: "preflight from unknown origin", origin: "http://evil.test", method: http.MethodOptions, wantCode: http.StatusNoContent},
-	}
 
 	r := testEngine(allowed)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			headers := map[string]string{}
-			if tt.origin != "" {
-				headers["Origin"] = tt.origin
-			}
-
-			w := do(r, tt.method, "/healthz", headers)
-
-			if w.Code != tt.wantCode {
-				t.Errorf("status = %d, want %d", w.Code, tt.wantCode)
-			}
-
-			got := w.Header().Get("Access-Control-Allow-Origin")
-			switch {
-			case tt.wantAllowed && got != tt.origin:
-				t.Errorf("Access-Control-Allow-Origin = %q, want %q", got, tt.origin)
-			case !tt.wantAllowed && got != "":
-				t.Errorf("Access-Control-Allow-Origin = %q, want it unset", got)
-			}
-		})
+	w := do(r, http.MethodGet, "/healthz", map[string]string{"Origin": allowed})
+	if got := w.Header().Get("Access-Control-Allow-Origin"); got != allowed {
+		t.Errorf("Access-Control-Allow-Origin = %q, want %q", got, allowed)
 	}
-}
 
-// An empty origin header must never match an empty entry in the list.
-func TestCORSIgnoresRequestsWithoutOrigin(t *testing.T) {
-	r := testEngine()
-
-	w := do(r, http.MethodGet, "/healthz", nil)
-
+	w = do(r, http.MethodGet, "/healthz", map[string]string{"Origin": "http://evil.test"})
 	if got := w.Header().Get("Access-Control-Allow-Origin"); got != "" {
 		t.Errorf("Access-Control-Allow-Origin = %q, want it unset", got)
 	}

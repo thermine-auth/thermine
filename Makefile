@@ -3,6 +3,9 @@
 # Run `make` to see every target.
 #
 # First time here?  make setup
+#
+# This file is the index of what can be done; anything longer than a couple of
+# lines lives in scripts/ and is called from here.
 
 # ---------------------------------------------------------------------------
 # Settings
@@ -34,11 +37,6 @@ DB_URL ?= $(XERMESS_DB_DSN)
 # command line, and changes nothing when it is not.
 MIGRATE_DB := $(if $(DB_URL),XERMESS_DB_DSN="$(DB_URL)")
 
-# The database name, and the same server with the "postgres" database instead:
-# creating a database means connecting to a different one.
-DB_NAME  := $(shell echo "$(DB_URL)" | sed -E 's|.*/([^/?]+)(\?.*)?$$|\1|')
-DB_ADMIN := $(shell echo "$(DB_URL)" | sed -E 's|/[^/?]+(\?.*)?$$|/postgres\1|')
-
 .DEFAULT_GOAL := help
 
 .PHONY: help
@@ -53,10 +51,8 @@ help: ## Show this help
 ## Getting started
 
 .PHONY: setup
-setup: env deps db-create migrate-up ## Set the project up from scratch, then say what to do next
-	@echo ""
-	@echo "Ready. Start the server with:  make run"
-	@echo "The frontend needs one more step:  make web-install"
+setup: ## Set the project up from scratch — checks, .env, database, migrations
+	./scripts/install.sh
 
 .PHONY: env
 env: ## Create .env from .env.example if it is missing
@@ -80,6 +76,10 @@ run-migrate: ## Run the server, applying migrations first
 .PHONY: build
 build: ## Build the server into bin/
 	go build -o $(BIN_DIR)/$(BINARY) $(SERVER)
+
+.PHONY: release
+release: ## Build for release, with the version stamped in — scripts/build.sh
+	./scripts/build.sh
 
 .PHONY: clean
 clean: ## Remove build artifacts
@@ -111,16 +111,15 @@ migrate-new: ## Create an empty migration — make migrate-new name=add_x
 
 .PHONY: db-create
 db-create: ## Create the database named in .env, if it does not exist
-	@psql "$(DB_ADMIN)" -tAc "SELECT 1 FROM pg_database WHERE datname='$(DB_NAME)'" | grep -q 1 \
-		&& echo "database $(DB_NAME) already exists" \
-		|| { psql "$(DB_ADMIN)" -c 'CREATE DATABASE "$(DB_NAME)"' >/dev/null && echo "created database $(DB_NAME)"; }
+	@./scripts/db.sh create
 
 .PHONY: db-reset
 db-reset: ## Delete everything in the database and migrate from scratch
-	@printf 'This deletes every table and row in "%s". Type yes to continue: ' "$(DB_NAME)"
-	@read answer && [ "$$answer" = "yes" ] || { echo "cancelled"; exit 1; }
-	psql "$(DB_URL)" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
-	$(MAKE) migrate-up
+	@./scripts/db.sh reset
+
+.PHONY: db-psql
+db-psql: ## Open a psql session on the database
+	@./scripts/db.sh psql
 
 ## Quality
 
@@ -142,6 +141,21 @@ test: ## Run tests
 .PHONY: tidy
 tidy: ## Add missing and remove unused modules
 	go mod tidy
+
+## Container
+#  The image is the API only; the admin panel is a separate app. The build
+#  context is the repository root, which is why -f points into scripts/.
+
+.PHONY: docker-build
+docker-build: ## Build the container image
+	docker build -f scripts/Dockerfile \
+		--build-arg VERSION=$$(git describe --tags --always --dirty 2>/dev/null || echo dev) \
+		--build-arg COMMIT=$$(git rev-parse --short HEAD 2>/dev/null || echo unknown) \
+		-t $(BINARY):latest .
+
+.PHONY: docker-run
+docker-run: ## Run the image, reading .env for the settings
+	docker run --rm -p 8080:8080 --env-file .env $(BINARY):latest
 
 ## Frontend
 

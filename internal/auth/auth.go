@@ -13,9 +13,9 @@ import (
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 
 	"xermess/internal/model"
+	"xermess/internal/store"
 )
 
 // SessionLifetime is how long a session lasts before the administrator has to
@@ -30,14 +30,16 @@ var ErrInvalidCredentials = errors.New("invalid credentials")
 // ErrNoSession is returned when a request carries no usable session.
 var ErrNoSession = errors.New("no active session")
 
-// Service signs administrators in and out.
+// Service signs administrators in and out. Every query it makes goes through
+// the store, so this file is about what signing in means rather than about
+// how the rows are fetched.
 type Service struct {
-	db *gorm.DB
+	store *store.Store
 }
 
-// New returns a Service backed by the given database.
-func New(db *gorm.DB) *Service {
-	return &Service{db: db}
+// New returns a Service backed by the given store.
+func New(st *store.Store) *Service {
+	return &Service{store: st}
 }
 
 // Request describes where a call came from, which is recorded on the session
@@ -51,14 +53,10 @@ type Request struct {
 // the only copy: the database keeps a hash of it, so a leaked database cannot
 // be used to sign in.
 func (s *Service) Login(ctx context.Context, username, password string, req Request) (string, *model.AdminUser, error) {
-	var admin model.AdminUser
-	err := s.db.WithContext(ctx).
-		Preload("Roles").
-		Where("username = ?", username).
-		First(&admin).Error
+	admin, err := s.store.AdminByUsername(ctx, username)
 
 	switch {
-	case errors.Is(err, gorm.ErrRecordNotFound):
+	case errors.Is(err, store.ErrNotFound):
 		// Still hash something, so a missing username and a wrong password
 		// take the same time to answer.
 		_ = bcrypt.CompareHashAndPassword([]byte("$2a$10$"+hex.EncodeToString(make([]byte, 26))), []byte(password))
@@ -93,19 +91,17 @@ func (s *Service) Login(ctx context.Context, username, password string, req Requ
 		UserAgent: req.UserAgent,
 		IP:        req.IP,
 	}
-	if err := s.db.WithContext(ctx).Create(&session).Error; err != nil {
+	if err := s.store.CreateSession(ctx, &session); err != nil {
 		return "", nil, err
 	}
 
-	now := time.Now()
-	if err := s.db.WithContext(ctx).Model(&admin).
-		Updates(map[string]any{"last_login_at": now, "last_login_ip": req.IP}).Error; err != nil {
+	if err := s.store.MarkAdminSignedIn(ctx, admin, time.Now(), req.IP); err != nil {
 		return "", nil, err
 	}
 
 	s.record(ctx, &admin.ID, admin.Username, "admin.login", req, "")
 
-	return token, &admin, nil
+	return token, admin, nil
 }
 
 // Authenticate returns the administrator the token belongs to. It is what the
@@ -115,13 +111,10 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*model.AdminU
 		return nil, ErrNoSession
 	}
 
-	var session model.AdminUserSession
-	err := s.db.WithContext(ctx).
-		Where("token_hash = ?", hashToken(token)).
-		First(&session).Error
+	session, err := s.store.SessionByTokenHash(ctx, hashToken(token))
 
 	switch {
-	case errors.Is(err, gorm.ErrRecordNotFound):
+	case errors.Is(err, store.ErrNotFound):
 		return nil, ErrNoSession
 	case err != nil:
 		return nil, err
@@ -131,10 +124,8 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*model.AdminU
 		return nil, ErrNoSession
 	}
 
-	var admin model.AdminUser
-	if err := s.db.WithContext(ctx).
-		Preload("Roles.Permissions").
-		First(&admin, "id = ?", session.AdminUserID).Error; err != nil {
+	admin, err := s.store.AdminByID(ctx, session.AdminUserID)
+	if err != nil {
 		return nil, ErrNoSession
 	}
 
@@ -142,7 +133,7 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*model.AdminU
 		return nil, ErrNoSession
 	}
 
-	return &admin, nil
+	return admin, nil
 }
 
 // Logout revokes the session the token belongs to. Signing out twice is not
@@ -152,23 +143,19 @@ func (s *Service) Logout(ctx context.Context, token string, req Request) error {
 		return nil
 	}
 
-	var session model.AdminUserSession
-	err := s.db.WithContext(ctx).Where("token_hash = ?", hashToken(token)).First(&session).Error
+	session, err := s.store.SessionByTokenHash(ctx, hashToken(token))
 	switch {
-	case errors.Is(err, gorm.ErrRecordNotFound):
+	case errors.Is(err, store.ErrNotFound):
 		return nil
 	case err != nil:
 		return err
 	}
 
-	now := time.Now()
-	if err := s.db.WithContext(ctx).Model(&session).
-		Update("revoked_at", now).Error; err != nil {
+	if err := s.store.RevokeSession(ctx, session, time.Now()); err != nil {
 		return err
 	}
 
-	var admin model.AdminUser
-	if err := s.db.WithContext(ctx).First(&admin, "id = ?", session.AdminUserID).Error; err == nil {
+	if admin, err := s.store.AdminByID(ctx, session.AdminUserID); err == nil {
 		s.record(ctx, &admin.ID, admin.Username, "admin.logout", req, "")
 	}
 
@@ -194,7 +181,7 @@ func (s *Service) record(ctx context.Context, adminID *uuid.UUID, actor, action 
 		entry.TargetID = adminID.String()
 	}
 
-	_ = s.db.WithContext(ctx).Create(&entry).Error
+	_ = s.store.WriteAudit(ctx, &entry)
 }
 
 // newToken returns a session token: 256 bits of randomness, hex encoded.
