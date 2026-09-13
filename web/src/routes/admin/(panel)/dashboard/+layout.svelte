@@ -1,17 +1,27 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import { untrack, type Snippet } from 'svelte';
 	import Sidebar from '$lib/components/admin/Sidebar.svelte';
+	import { rememberSidebar } from '$lib/sidebar';
+	import type { LayoutData } from './$types';
 
-	let { children }: { children: Snippet } = $props();
+	let { data, children }: { data: LayoutData; children: Snippet } = $props();
+
+	/** Starts as the server rendered it and is the reader's from then on, so
+	    the value is read once on purpose: a later load returns the same
+	    cookie, and re-reading it would undo a toggle. */
+	let collapsed = $state(untrack(() => data.sidebar) === 'mini');
+
+	function toggle() {
+		collapsed = !collapsed;
+		rememberSidebar(collapsed ? 'mini' : 'wide');
+	}
 </script>
 
-<div class="dashboard">
-	<Sidebar />
+<div class="dashboard" class:mini={collapsed}>
+	<Sidebar {collapsed} onToggle={toggle} />
 
 	<div class="content">
-		<div class="column">
-			{@render children()}
-		</div>
+		{@render children()}
 	</div>
 </div>
 
@@ -20,29 +30,32 @@
 		display: grid;
 		grid-template-columns: var(--sidebar-width) 1fr;
 		align-items: start;
+		transition: grid-template-columns var(--speed);
 	}
 
+	/* Folded, the column is just wide enough for the icons. The width is a
+	   variable so the sidebar's own sticky layout follows it. */
+	.dashboard.mini {
+		--sidebar-width: 3.5rem;
+	}
+
+	/* No side padding: the tables inside reach the sidebar and the window
+	   edge, and everything else is inset by the gutter instead. */
 	.content {
 		min-width: 0;
-		padding: var(--space-5) var(--space-4);
+		padding: var(--space-4) 0;
 	}
 
-	/* Centred in the space left over by the sidebar, and no wider than any
-	   other page. */
-	.column {
-		max-width: var(--content-width);
-		margin-inline: auto;
-	}
-
-	@media (max-width: 55rem) {
+	@media (prefers-reduced-motion: reduce) {
 		.dashboard {
-			grid-template-columns: 1fr;
+			transition: none;
 		}
 	}
 
-	@media (max-width: 40rem) {
-		.content {
-			padding: var(--space-4) var(--space-3);
+	@media (max-width: 55rem) {
+		.dashboard,
+		.dashboard.mini {
+			grid-template-columns: 1fr;
 		}
 	}
 </style>

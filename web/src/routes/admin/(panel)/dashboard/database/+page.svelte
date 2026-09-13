@@ -1,7 +1,15 @@
 <script lang="ts">
 	import PageHeading from '$lib/components/admin/PageHeading.svelte';
-	import { Badge, DataTable } from '$lib/components/ui';
+	import { Badge, DataTable, type Column } from '$lib/components/ui';
 	import { demoConnections } from '$lib/demo';
+
+	const columns: Column[] = [
+		{ key: 'name', min: '10rem' },
+		{ key: 'engine' },
+		{ key: 'users' },
+		{ key: 'applications' },
+		{ key: 'status' }
+	];
 </script>
 
 <svelte:head><title>Database · xermess admin</title></svelte:head>
@@ -12,17 +20,17 @@
 	demo
 />
 
-<DataTable
-	rows={demoConnections}
-	empty="No connections."
-	columns="minmax(9rem, 1.2fr) minmax(7rem, 1fr) auto auto auto"
->
+<DataTable {columns} rows={demoConnections} empty="No connections.">
 	{#snippet row(connection)}
-		<strong>{connection.name}</strong>
-		<span class="hint mono">{connection.engine}</span>
-		<span class="hint count">{connection.users.toLocaleString()} users</span>
-		<span class="hint count">{connection.applications} apps</span>
-		<Badge tone={connection.status === 'active' ? 'success' : 'neutral'}>{connection.status}</Badge>
+		<td><strong>{connection.name}</strong></td>
+		<td class="hint mono">{connection.engine}</td>
+		<td class="hint count">{connection.users.toLocaleString()} users</td>
+		<td class="hint count">{connection.applications} apps</td>
+		<td>
+			<Badge tone={connection.status === 'active' ? 'success' : 'neutral'}>
+				{connection.status}
+			</Badge>
+		</td>
 	{/snippet}
 </DataTable>
 

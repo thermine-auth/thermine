@@ -24,6 +24,7 @@
 <style>
 	header {
 		margin-bottom: var(--space-4);
+		padding-inline: var(--page-gutter);
 	}
 
 	.title {

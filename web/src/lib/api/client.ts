@@ -27,7 +27,7 @@ export class ApiError extends Error {
 export type Fetch = typeof globalThis.fetch;
 
 type RequestOptions = {
-	method?: 'GET' | 'POST';
+	method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
 	body?: unknown;
 	fetch?: Fetch;
 };
@@ -56,7 +56,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 		);
 	}
 
-	const payload = await response.json().catch(() => ({}));
+	// A 204 has no body to read.
+	const payload = response.status === 204 ? {} : await response.json().catch(() => ({}));
 
 	if (!response.ok) {
 		throw new ApiError(response.status, payload.error ?? 'Something went wrong');
@@ -68,5 +69,9 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 export const api = {
 	get: <T>(path: string, fetcher?: Fetch) => request<T>(path, { fetch: fetcher }),
 	post: <T>(path: string, body?: unknown, fetcher?: Fetch) =>
-		request<T>(path, { method: 'POST', body, fetch: fetcher })
+		request<T>(path, { method: 'POST', body, fetch: fetcher }),
+	patch: <T>(path: string, body?: unknown, fetcher?: Fetch) =>
+		request<T>(path, { method: 'PATCH', body, fetch: fetcher }),
+	delete: <T>(path: string, fetcher?: Fetch) =>
+		request<T>(path, { method: 'DELETE', fetch: fetcher })
 };

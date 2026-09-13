@@ -1,7 +1,14 @@
 <script lang="ts">
 	import PageHeading from '$lib/components/admin/PageHeading.svelte';
-	import { Badge, DataTable } from '$lib/components/ui';
+	import { Badge, DataTable, type Column } from '$lib/components/ui';
 	import { demoLanguages } from '$lib/demo';
+
+	const columns: Column[] = [
+		{ key: 'name', min: '9rem' },
+		{ key: 'code' },
+		{ key: 'translated', min: '10rem' },
+		{ key: 'status' }
+	];
 </script>
 
 <svelte:head><title>Languages · xermess admin</title></svelte:head>
@@ -12,24 +19,26 @@
 	demo
 />
 
-<DataTable
-	rows={demoLanguages}
-	empty="No languages."
-	columns="minmax(7rem, 1fr) auto minmax(6rem, 1fr) auto"
->
+<DataTable {columns} rows={demoLanguages} empty="No languages.">
 	{#snippet row(language)}
-		<span class="name">
-			<strong>{language.name}</strong>
-			{#if language.isDefault}
-				<Badge>default</Badge>
-			{/if}
-		</span>
-		<span class="hint mono">{language.code}</span>
-		<span class="progress" title="{language.translated}% translated">
-			<span class="bar" style="--filled: {language.translated}%"></span>
-			<span class="hint count">{language.translated}%</span>
-		</span>
-		<Badge tone={language.status === 'active' ? 'success' : 'neutral'}>{language.status}</Badge>
+		<td>
+			<span class="name">
+				<strong>{language.name}</strong>
+				{#if language.isDefault}
+					<Badge>default</Badge>
+				{/if}
+			</span>
+		</td>
+		<td class="hint mono">{language.code}</td>
+		<td>
+			<span class="progress" title="{language.translated}% translated">
+				<span class="bar" style="--filled: {language.translated}%"></span>
+				<span class="hint count">{language.translated}%</span>
+			</span>
+		</td>
+		<td>
+			<Badge tone={language.status === 'active' ? 'success' : 'neutral'}>{language.status}</Badge>
+		</td>
 	{/snippet}
 </DataTable>
 

@@ -18,25 +18,17 @@
 		min-height: 100dvh;
 	}
 
-	/* Pages sit in a centred column of a readable width. */
+	/* Pages fill the width, the way PocketBase does: a table is easier to
+	   read with room for its columns than centred in a narrow column, and it
+	   runs to the edges rather than sitting in a box. */
 	main {
-		max-width: var(--content-width);
-		margin-inline: auto;
-		padding: var(--space-5) var(--space-4);
+		padding: var(--space-4) 0;
 	}
 
-	/* The dashboard brings its own sidebar and centres its own content, so it
-	   takes the full width instead. .dashboard belongs to a child component,
-	   which is why :has has to match it globally. */
+	/* The dashboard brings its own sidebar and pads its own content.
+	   .dashboard belongs to a child component, which is why :has has to match
+	   it globally. */
 	main:has(:global(.dashboard)) {
-		max-width: none;
-		margin-inline: 0;
 		padding: 0;
-	}
-
-	@media (max-width: 40rem) {
-		main {
-			padding: var(--space-4) var(--space-3);
-		}
 	}
 </style>

@@ -2,6 +2,7 @@
 	import { RiMoonLine, RiSunLine } from 'svelte-remixicon';
 	import { theme } from '$lib/theme.svelte';
 	import Icon from './Icon.svelte';
+	import Tooltip from './Tooltip.svelte';
 </script>
 
 <!--
@@ -12,36 +13,28 @@
 	load. This way it is right in the first frame, and the two icons can turn
 	into each other rather than being swapped.
 -->
-<button
-	type="button"
-	onclick={() => theme.toggle()}
-	title="Switch between the light and dark theme"
-	aria-label="Switch between the light and dark theme"
->
-	<span class="icons">
-		<span class="moon"><Icon icon={RiMoonLine} size="1.125rem" /></span>
-		<span class="sun"><Icon icon={RiSunLine} size="1.125rem" /></span>
-	</span>
-</button>
+<Tooltip label="Switch theme">
+	{#snippet children(trigger)}
+		<button
+			{...trigger()}
+			type="button"
+			class="icon-button md"
+			onclick={() => theme.toggle()}
+			aria-label="Switch between the light and dark theme"
+		>
+			<span class="icons">
+				<span class="moon"><Icon icon={RiMoonLine} size="1.125rem" /></span>
+				<span class="sun"><Icon icon={RiSunLine} size="1.125rem" /></span>
+			</span>
+		</button>
+	{/snippet}
+</Tooltip>
 
 <style>
+	/* The shape is the shared .icon-button; what belongs to this button is
+	   the press and the two icons turning into each other. */
 	button {
-		display: grid;
-		place-items: center;
-		width: 35px;
-		height: 35px;
-		border: none;
-		border-radius: var(--radius-md);
-		background: transparent;
-		color: inherit;
-		cursor: pointer;
-		transition:
-			background-color var(--speed-fast),
-			transform var(--speed-fast);
-	}
-
-	button:hover {
-		background: color-mix(in srgb, currentcolor, transparent 88%);
+		transition: transform var(--speed-fast);
 	}
 
 	button:active {

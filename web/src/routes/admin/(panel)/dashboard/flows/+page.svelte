@@ -1,7 +1,14 @@
 <script lang="ts">
 	import PageHeading from '$lib/components/admin/PageHeading.svelte';
-	import { Badge, DataTable } from '$lib/components/ui';
+	import { Badge, DataTable, type Column } from '$lib/components/ui';
 	import { demoFlows } from '$lib/demo';
+
+	const columns: Column[] = [
+		{ key: 'name', min: '10rem' },
+		{ key: 'steps', min: '14rem' },
+		{ key: 'applications' },
+		{ key: 'status' }
+	];
 </script>
 
 <svelte:head><title>Login flows · xermess admin</title></svelte:head>
@@ -12,21 +19,21 @@
 	demo
 />
 
-<DataTable
-	rows={demoFlows}
-	empty="No flows defined."
-	columns="minmax(8rem, 1fr) minmax(11rem, 1.6fr) auto auto"
->
+<DataTable {columns} rows={demoFlows} empty="No flows defined.">
 	{#snippet row(flow)}
-		<span class="name">
-			<strong>{flow.name}</strong>
-			{#if flow.isDefault}
-				<Badge>default</Badge>
-			{/if}
-		</span>
-		<span class="hint mono steps">{flow.steps}</span>
-		<span class="hint count">{flow.applications} apps</span>
-		<Badge tone={flow.status === 'active' ? 'success' : 'neutral'}>{flow.status}</Badge>
+		<td>
+			<span class="name">
+				<strong>{flow.name}</strong>
+				{#if flow.isDefault}
+					<Badge>default</Badge>
+				{/if}
+			</span>
+		</td>
+		<td class="hint mono steps">{flow.steps}</td>
+		<td class="hint count">{flow.applications} apps</td>
+		<td>
+			<Badge tone={flow.status === 'active' ? 'success' : 'neutral'}>{flow.status}</Badge>
+		</td>
 	{/snippet}
 </DataTable>
 
@@ -44,6 +51,7 @@
 		font-size: var(--text-sm);
 	}
 	.steps {
+		max-width: 24rem;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;

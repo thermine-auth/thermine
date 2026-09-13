@@ -232,6 +232,31 @@ func (h *admin) clearSessionCookie(c *gin.Context) {
 	})
 }
 
+// record writes one line to the activity log for something the signed-in
+// administrator just did. A failure to write the log must not fail the
+// request that caused it: the change has already happened.
+func (h *admin) record(c *gin.Context, action, targetID string) {
+	actor := adminFrom(c)
+	if actor == nil {
+		return
+	}
+
+	id := actor.ID
+	entry := model.AuditLog{
+		AdminUserID: &id,
+		ActorEmail:  actor.Username,
+		Action:      action,
+		TargetType:  "user",
+		TargetID:    targetID,
+		IP:          c.ClientIP(),
+		UserAgent:   c.Request.UserAgent(),
+	}
+
+	if err := h.db.WithContext(c.Request.Context()).Create(&entry).Error; err != nil {
+		h.log.Error("writing the activity log failed", "error", err, "action", action)
+	}
+}
+
 // requestOf describes where the call came from, for the session and the log.
 func requestOf(c *gin.Context) auth.Request {
 	return auth.Request{

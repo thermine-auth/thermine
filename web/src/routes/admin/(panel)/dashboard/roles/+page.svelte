@@ -1,7 +1,14 @@
 <script lang="ts">
 	import PageHeading from '$lib/components/admin/PageHeading.svelte';
-	import { DataTable } from '$lib/components/ui';
+	import { DataTable, type Column } from '$lib/components/ui';
 	import { demoRoles } from '$lib/demo';
+
+	const columns: Column[] = [
+		{ key: 'name', min: '9rem' },
+		{ key: 'description', min: '14rem' },
+		{ key: 'permissions' },
+		{ key: 'members' }
+	];
 </script>
 
 <svelte:head><title>Roles · xermess admin</title></svelte:head>
@@ -12,16 +19,12 @@
 	demo
 />
 
-<DataTable
-	rows={demoRoles}
-	empty="No roles."
-	columns="minmax(8rem, 0.8fr) minmax(12rem, 2fr) auto auto"
->
+<DataTable {columns} rows={demoRoles} empty="No roles.">
 	{#snippet row(role)}
-		<span class="mono name">{role.name}</span>
-		<span class="hint">{role.description}</span>
-		<span class="hint count">{role.permissions} permissions</span>
-		<span class="hint count">{role.members} members</span>
+		<td class="mono name">{role.name}</td>
+		<td class="hint">{role.description}</td>
+		<td class="hint count">{role.permissions} permissions</td>
+		<td class="hint count">{role.members} members</td>
 	{/snippet}
 </DataTable>
 

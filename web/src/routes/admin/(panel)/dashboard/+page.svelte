@@ -45,6 +45,7 @@
 <style>
 	.subtitle {
 		margin: var(--space-1) 0 var(--space-5);
+		padding-inline: var(--page-gutter);
 		color: var(--color-text-hint);
 		font-size: var(--text-base);
 	}
@@ -55,5 +56,6 @@
 
 	h2 {
 		margin-bottom: var(--space-3);
+		padding-inline: var(--page-gutter);
 	}
 </style>

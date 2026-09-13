@@ -186,3 +186,312 @@
 	border: none;
 	background: var(--color-border);
 }
+
+/* Switches, used for boolean fields. */
+
+/* Icon buttons and their tooltips.
+
+   PocketBase draws these as circles with nothing behind them until they are
+   hovered, at the same height as the other controls on the page: 45px for a
+   page's own tools, 35px for the ones inside a table row. The class comes
+   from IconButton.svelte. */
+
+.icon-button {
+	display: inline-grid;
+	place-items: center;
+	flex: none;
+	border: none;
+	border-radius: 50%;
+	background: transparent;
+	color: var(--color-text-hint);
+	cursor: pointer;
+	transition:
+		background-color var(--speed),
+		color var(--speed);
+}
+
+.icon-button.md {
+	width: var(--control-height);
+	height: var(--control-height);
+}
+
+.icon-button.sm {
+	width: 35px;
+	height: 35px;
+}
+
+.icon-button:hover:not(:disabled) {
+	background: var(--color-secondary);
+	color: var(--color-text);
+}
+
+.icon-button.danger:hover:not(:disabled) {
+	background: var(--surface-danger);
+	color: var(--color-danger);
+}
+
+.icon-button:disabled {
+	cursor: not-allowed;
+	opacity: 0.6;
+}
+
+.icon-button.spinning svg {
+	animation: icon-spin 700ms linear infinite;
+}
+
+@keyframes icon-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+[data-scope='tooltip'][data-part='positioner'] {
+	z-index: 60;
+}
+
+[data-scope='tooltip'][data-part='content'] {
+	padding: 5px 9px;
+	border-radius: var(--radius-sm);
+	background: var(--tooltip-surface);
+	color: var(--tooltip-text);
+	box-shadow: var(--shadow-md);
+	font-size: var(--text-sm);
+	font-weight: 500;
+	line-height: 1.3;
+	white-space: nowrap;
+}
+
+[data-scope='tooltip'][data-part='content'][data-state='open'] {
+	animation: tooltip-in var(--speed) ease-out;
+}
+
+@keyframes tooltip-in {
+	from {
+		opacity: 0;
+		transform: translateY(-2px);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.icon-button.spinning svg,
+	[data-scope='tooltip'][data-part='content'][data-state='open'] {
+		animation: none;
+	}
+}
+
+/* A field nobody may edit — a record's id, say — is shown rather than hidden,
+   but it reads as a value instead of as somewhere to type. */
+
+[data-scope='field'][data-part='input'][readonly] {
+	color: var(--color-text-hint);
+	font-family: var(--font-mono);
+	font-size: var(--text-sm);
+	cursor: default;
+}
+
+[data-scope='field'][data-part='input'][readonly]:focus-visible {
+	background: var(--color-input);
+}
+
+/* Checkbox. Used to tick rows in a table: a square that turns green when it
+   is on, the way PocketBase marks a chosen record. */
+
+[data-scope='checkbox'][data-part='root'] {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	cursor: pointer;
+}
+
+[data-scope='checkbox'][data-part='control'] {
+	display: grid;
+	place-items: center;
+	width: 20px;
+	height: 20px;
+	border: 2px solid var(--color-input-border);
+	border-radius: var(--radius-sm);
+	background: var(--color-surface);
+	color: var(--color-success);
+	transition:
+		border-color var(--speed),
+		background-color var(--speed);
+}
+
+[data-scope='checkbox'][data-part='root']:hover [data-part='control'] {
+	border-color: var(--color-text-disabled);
+}
+
+[data-scope='checkbox'][data-part='control'][data-state='checked'],
+[data-scope='checkbox'][data-part='control'][data-state='indeterminate'] {
+	border-color: var(--color-success);
+	background: color-mix(in srgb, var(--color-success), var(--color-surface) 88%);
+}
+
+/* The indicator carries the hidden attribute when the box is off, so it must
+   not be given a display of its own. */
+[data-scope='checkbox'][data-part='indicator'] {
+	line-height: 0;
+}
+
+[data-scope='checkbox'][data-part='label'] {
+	font-size: var(--text-base);
+}
+
+[data-scope='checkbox'][data-part='root']:has(:focus-visible) [data-part='control'] {
+	outline: 2px solid var(--color-info);
+	outline-offset: 1px;
+}
+
+/* Switch. A boolean is the toggle itself: no filled box around it, the way
+   PocketBase shows a record's true/false fields. */
+
+[data-scope='switch'][data-part='root'] {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-1) 0;
+	cursor: pointer;
+}
+
+[data-scope='switch'][data-part='control'] {
+	flex: none;
+	display: flex;
+	align-items: center;
+	width: 42px;
+	height: 25px;
+	padding: 2px;
+	/* A rounded rectangle rather than a pill, which is what makes the thumb
+	   read as a switch and not a radio. */
+	border-radius: 7px;
+	background: var(--color-secondary-alt);
+	transition: background-color var(--speed);
+}
+
+[data-scope='switch'][data-part='control'][data-state='checked'] {
+	background: var(--color-success);
+}
+
+[data-scope='switch'][data-part='thumb'] {
+	width: 21px;
+	height: 21px;
+	border-radius: 5px;
+	background: var(--color-primary-text);
+	box-shadow: var(--shadow-sm);
+	transition: transform var(--speed);
+}
+
+[data-scope='switch'][data-part='thumb'][data-state='checked'] {
+	transform: translateX(17px);
+}
+
+[data-scope='switch'][data-part='label'] {
+	color: var(--color-text);
+	font-size: var(--text-base);
+}
+
+[data-scope='switch'][data-part='root'][data-focus] [data-part='control'] {
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-info), transparent 80%);
+}
+
+/* Dialog, opened as a drawer: a full-height panel against the right edge,
+   the way PocketBase opens a record. Every dialog in the panel is one of
+   these, so the anatomy is styled once here and Drawer.svelte only lays out
+   the head, body and foot inside it. */
+
+[data-scope='dialog'][data-part='backdrop'] {
+	position: fixed;
+	inset: 0;
+	z-index: 40;
+	background: color-mix(in srgb, #000, transparent 60%);
+}
+
+[data-scope='dialog'][data-part='backdrop'][data-state='open'] {
+	animation: drawer-backdrop-in var(--speed-drawer) ease-out;
+}
+
+[data-scope='dialog'][data-part='backdrop'][data-state='closed'] {
+	animation: drawer-backdrop-in var(--speed-drawer) ease-in reverse;
+}
+
+[data-scope='dialog'][data-part='positioner'] {
+	position: fixed;
+	inset: 0;
+	z-index: 50;
+	display: flex;
+	justify-content: flex-end;
+}
+
+[data-scope='dialog'][data-part='content'] {
+	display: flex;
+	flex-direction: column;
+	width: min(var(--drawer-width), 100%);
+	height: 100%;
+	border-left: 1px solid var(--color-border);
+	background: var(--color-surface);
+	box-shadow: -8px 0 30px 0 rgb(0 0 0 / 12%);
+}
+
+[data-scope='dialog'][data-part='content'][data-state='open'] {
+	animation: drawer-in var(--speed-drawer) cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+[data-scope='dialog'][data-part='content'][data-state='closed'] {
+	animation: drawer-in var(--speed-drawer) cubic-bezier(0.32, 0.72, 0, 1) reverse;
+}
+
+[data-scope='dialog'][data-part='content']:focus-visible {
+	outline: none;
+}
+
+[data-scope='dialog'][data-part='title'] {
+	margin: 0;
+	font-size: var(--text-xl);
+	font-weight: 600;
+}
+
+[data-scope='dialog'][data-part='description'] {
+	margin-top: var(--space-1);
+	color: var(--color-text-hint);
+	font-size: var(--text-sm);
+}
+
+@keyframes drawer-backdrop-in {
+	from {
+		opacity: 0;
+	}
+}
+
+@keyframes drawer-in {
+	from {
+		transform: translateX(100%);
+	}
+}
+
+/* A drawer that slides is a nicety; one that appears is the same panel. */
+@media (prefers-reduced-motion: reduce) {
+	[data-scope='dialog'][data-part='backdrop'],
+	[data-scope='dialog'][data-part='content'] {
+		animation-duration: 1ms;
+	}
+}
+
+/* Select, used by the field type picker. */
+
+[data-scope='field'][data-part='select'] {
+	width: 100%;
+	height: var(--control-height);
+	padding: 0 13px;
+	border: none;
+	border-radius: var(--radius-sm);
+	background: var(--color-input);
+	color: var(--color-text);
+	font: inherit;
+	font-family: var(--font-sans);
+	font-size: var(--text-base);
+	cursor: pointer;
+}
+
+[data-scope='field'][data-part='select']:focus-visible {
+	outline: none;
+	background: var(--color-input-focus);
+}

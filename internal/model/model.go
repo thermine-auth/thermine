@@ -50,5 +50,7 @@ func All() []any {
 		&AdminUserSession{},
 		&MFA{},
 		&AuditLog{},
+		&UserField{},
+		&User{},
 	}
 }

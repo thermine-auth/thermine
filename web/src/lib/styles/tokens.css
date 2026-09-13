@@ -34,14 +34,23 @@
 	/* Layout */
 	--control-height: 45px;
 	--header-height: 55px;
-	/* How wide a column of content is allowed to get. Past this, lines get
-	   hard to scan and tables get sparse. */
-	--content-width: 72rem;
 	--sidebar-width: 15rem;
+	/* How far a page's text is inset. Tables run past it to the edges, the
+	   way PocketBase's do, so the rows meet the sidebar with no gap. */
+	--page-gutter: 20px;
 
 	/* Motion */
 	--speed-fast: 70ms;
 	--speed: 140ms;
+	--speed-drawer: 220ms;
+
+	/* How wide a drawer opens. It never passes the edge of a narrow screen. */
+	--drawer-width: 40rem;
+
+	/* Scrollbars. The thumb is drawn inside a transparent border, so the bar
+	   reads thinner than the space it reserves and never touches the content
+	   beside it. See styles/scrollbars.css. */
+	--scrollbar-size: 10px;
 
 	/* Light palette */
 	--color-surface: #fff;
@@ -74,6 +83,16 @@
 	--shadow-sm: 0 2px 5px 0 rgb(0 0 0 / 6%);
 	--shadow-md: 0 2px 12px 0 rgb(0 0 0 / 8%);
 	--selection: #465a7340;
+
+	--scrollbar-thumb: color-mix(in srgb, #25272d, transparent 78%);
+	--scrollbar-thumb-hover: color-mix(in srgb, #25272d, transparent 58%);
+
+	--tooltip-surface: #25272d;
+	--tooltip-text: #fff;
+
+	/* The wash a row takes under the pointer. PocketBase uses #f8f9fa on
+	   white: barely there, which is what keeps a long table calm. */
+	--row-hover: #f8f9fa;
 
 	color-scheme: light;
 }
@@ -112,6 +131,14 @@
 	--shadow-sm: 0 2px 5px 0 rgb(0 0 0 / 30%);
 	--shadow-md: 0 2px 12px 0 rgb(0 0 0 / 40%);
 
+	--scrollbar-thumb: color-mix(in srgb, #ebebeb, transparent 80%);
+	--scrollbar-thumb-hover: color-mix(in srgb, #ebebeb, transparent 60%);
+
+	--tooltip-surface: color-mix(in srgb, var(--color-dark-base), white 26%);
+	--tooltip-text: #fff;
+
+	--row-hover: color-mix(in srgb, var(--color-dark-base), white 6%);
+
 	color-scheme: dark;
 }
 
@@ -144,6 +171,14 @@
 
 		--shadow-sm: 0 2px 5px 0 rgb(0 0 0 / 30%);
 		--shadow-md: 0 2px 12px 0 rgb(0 0 0 / 40%);
+
+		--scrollbar-thumb: color-mix(in srgb, #ebebeb, transparent 80%);
+		--scrollbar-thumb-hover: color-mix(in srgb, #ebebeb, transparent 60%);
+
+		--tooltip-surface: color-mix(in srgb, var(--color-dark-base), white 26%);
+		--tooltip-text: #fff;
+
+		--row-hover: color-mix(in srgb, var(--color-dark-base), white 6%);
 
 		color-scheme: dark;
 	}

@@ -21,20 +21,22 @@
 	demo
 />
 
-<Card>
-	<dl>
-		{#each details as detail (detail.label)}
+<div class="gutter">
+	<Card>
+		<dl>
+			{#each details as detail (detail.label)}
+				<div class="row">
+					<dt>{detail.label}</dt>
+					<dd class:mono={detail.mono}>{detail.value}</dd>
+				</div>
+			{/each}
 			<div class="row">
-				<dt>{detail.label}</dt>
-				<dd class:mono={detail.mono}>{detail.value}</dd>
+				<dt>Plan</dt>
+				<dd><Badge tone="success">{org.plan}</Badge></dd>
 			</div>
-		{/each}
-		<div class="row">
-			<dt>Plan</dt>
-			<dd><Badge tone="success">{org.plan}</Badge></dd>
-		</div>
-	</dl>
-</Card>
+		</dl>
+	</Card>
+</div>
 
 <style>
 	dl {

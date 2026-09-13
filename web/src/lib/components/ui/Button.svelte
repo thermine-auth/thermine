@@ -4,15 +4,18 @@
 
 	type Props = HTMLButtonAttributes & {
 		/** `solid` for the one action a screen is about, `secondary` for the
-		    rest, `ghost` for icon buttons in a bar. */
-		variant?: 'solid' | 'secondary' | 'ghost';
+		    rest, `ghost` for icon buttons in a bar, `danger` for confirming
+		    something that cannot be undone. */
+		variant?: 'solid' | 'secondary' | 'ghost' | 'danger';
+		/** `sm` for buttons that sit inside a bar or a row. */
+		size?: 'md' | 'sm';
 		children: Snippet;
 	};
 
-	let { variant = 'solid', type = 'button', children, ...rest }: Props = $props();
+	let { variant = 'solid', size = 'md', type = 'button', children, ...rest }: Props = $props();
 </script>
 
-<button {type} class={variant} {...rest}>
+<button {type} class="{variant} {size}" {...rest}>
 	{@render children()}
 </button>
 
@@ -42,6 +45,12 @@
 		cursor: not-allowed;
 	}
 
+	.sm {
+		min-height: 32px;
+		padding: 0 var(--space-3);
+		font-size: var(--text-sm);
+	}
+
 	.solid {
 		background: var(--color-primary);
 		color: var(--color-primary-text);
@@ -58,6 +67,15 @@
 
 	.secondary:hover:not(:disabled) {
 		background: var(--color-secondary-alt);
+	}
+
+	.danger {
+		background: var(--color-danger);
+		color: #fff;
+	}
+
+	.danger:hover:not(:disabled) {
+		background: color-mix(in srgb, var(--color-danger), black 10%);
 	}
 
 	.ghost {

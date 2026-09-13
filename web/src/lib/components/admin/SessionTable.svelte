@@ -1,29 +1,34 @@
 <script lang="ts">
 	import { RiComputerLine } from 'svelte-remixicon';
 	import type { AdminSession } from '$lib/api';
-	import { Badge, DataTable, Icon } from '$lib/components/ui';
+	import { Badge, DataTable, Icon, type Column } from '$lib/components/ui';
 	import { formatDateTime } from '$lib/format';
 
 	type Props = { sessions: AdminSession[] };
 
 	let { sessions }: Props = $props();
+
+	const columns: Column[] = [
+		{ key: 'state' },
+		{ key: 'ip' },
+		{ key: 'agent', min: '14rem' },
+		{ key: 'when', align: 'end' }
+	];
 </script>
 
-<DataTable
-	rows={sessions}
-	empty="No sessions recorded."
-	columns="auto minmax(5rem, 1fr) minmax(8rem, 2fr) auto"
->
+<DataTable {columns} rows={sessions} empty="No sessions recorded.">
 	{#snippet row(session)}
-		<Badge tone={session.active ? 'success' : 'neutral'}>
-			{session.active ? 'active' : 'ended'}
-		</Badge>
-		<span class="muted mono">{session.ip}</span>
-		<span class="muted agent">
+		<td>
+			<Badge tone={session.active ? 'success' : 'neutral'}>
+				{session.active ? 'active' : 'ended'}
+			</Badge>
+		</td>
+		<td class="muted mono">{session.ip}</td>
+		<td class="muted agent">
 			<Icon icon={RiComputerLine} />
 			{session.user_agent || '—'}
-		</span>
-		<span class="muted when">{formatDateTime(session.created_at)}</span>
+		</td>
+		<td class="muted when end">{formatDateTime(session.created_at)}</td>
 	{/snippet}
 </DataTable>
 
@@ -37,28 +42,20 @@
 		font-size: var(--text-sm);
 	}
 
+	/* A user agent is a long string nobody reads to the end: it is given a
+	   share of the row and cut off there rather than widening the table. */
 	.agent {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
+		max-width: 30rem;
 		overflow: hidden;
-		white-space: nowrap;
+		text-overflow: ellipsis;
 	}
 
-	.agent :global(+ *),
-	.agent {
-		text-overflow: ellipsis;
+	.agent :global(svg) {
+		vertical-align: -3px;
+		margin-right: var(--space-2);
 	}
 
 	.when {
 		font-size: var(--text-sm);
-		text-align: right;
-		white-space: nowrap;
-	}
-
-	@media (max-width: 40rem) {
-		.when {
-			text-align: left;
-		}
 	}
 </style>

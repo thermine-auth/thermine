@@ -56,6 +56,19 @@ func registerRoutes(r *gin.Engine, h *admin) {
 			signedIn.GET("/me", h.me)
 			signedIn.GET("/overview", h.overview)
 			signedIn.GET("/logs", h.logs)
+
+			// The users an organisation manages, and the fields their
+			// records are made of.
+			signedIn.GET("/users", h.listUsers)
+			signedIn.POST("/users", h.createUser)
+			signedIn.GET("/users/:id", h.getUser)
+			signedIn.PATCH("/users/:id", h.updateUser)
+			signedIn.DELETE("/users/:id", h.deleteUser)
+
+			signedIn.GET("/user-fields", h.listUserFields)
+			signedIn.POST("/user-fields", h.createUserField)
+			signedIn.PATCH("/user-fields/:id", h.updateUserField)
+			signedIn.DELETE("/user-fields/:id", h.deleteUserField)
 			signedIn.GET("/sessions", h.sessions)
 		}
 	}

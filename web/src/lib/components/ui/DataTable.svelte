@@ -1,65 +1,287 @@
 <script lang="ts" generics="Row extends { id: string }">
 	import type { Snippet } from 'svelte';
-	import Card from './Card.svelte';
+	import { RiArrowRightLine } from 'svelte-remixicon';
+	import Checkbox from './Checkbox.svelte';
+	import Icon from './Icon.svelte';
+	import IconButton from './IconButton.svelte';
+	import type { Column } from './table';
 
 	type Props = {
+		columns: Column[];
 		rows: Row[];
-		/** Shown instead of the rows when there are none. */
+		/** Shown in place of the rows when there are none. */
 		empty: string;
-		/** Renders one row. The grid columns are set by the caller. */
+		/** One row's cells, in column order, as `<td>` elements. */
 		row: Snippet<[Row]>;
-		/** A CSS grid-template-columns value for the row layout. */
-		columns: string;
+		/** Given when a row leads somewhere: rows become clickable and a
+		    column of arrows is pinned against the right edge. */
+		onOpen?: (row: Row) => void;
+		/** What that row's arrow is called, for anyone not looking at it. */
+		label?: (row: Row) => string;
+		/** Bind this to hold the ids of the ticked rows. Binding it is what
+		    puts a column of checkboxes at the front of the table. */
+		selection?: string[];
 	};
 
-	let { rows, empty, row, columns }: Props = $props();
-</script>
+	let { columns, rows, empty, row, onOpen, label, selection = $bindable() }: Props = $props();
 
-<Card>
-	{#if rows.length}
-		<div class="table" style="--columns: {columns}">
-			{#each rows as item (item.id)}
-				<div class="row">
-					{@render row(item)}
-				</div>
-			{/each}
-		</div>
-	{:else}
-		<p class="empty">{empty}</p>
-	{/if}
-</Card>
+	const selectable = $derived(selection !== undefined);
+	const ticked = $derived(new Set(selection ?? []));
+	const allTicked = $derived(rows.length > 0 && rows.every((item) => ticked.has(item.id)));
 
-<style>
-	.row {
-		display: grid;
-		grid-template-columns: var(--columns);
-		gap: var(--space-4);
-		align-items: center;
-		padding: var(--space-3) var(--space-4);
-		font-size: var(--text-base);
+	/** Ticked, part-ticked, or not, for the box in the header. */
+	const headerState = $derived<boolean | 'indeterminate'>(
+		allTicked ? true : rows.some((item) => ticked.has(item.id)) ? 'indeterminate' : false
+	);
+
+	/** A row that has been searched or filtered away cannot be acted on, so
+	    it does not stay counted either. */
+	$effect(() => {
+		if (selection === undefined) return;
+
+		const ids = new Set(rows.map((item) => item.id));
+		const kept = selection.filter((id) => ids.has(id));
+
+		if (kept.length !== selection.length) selection = kept;
+	});
+
+	function tickAll(checked: boolean) {
+		selection = checked ? rows.map((item) => item.id) : [];
 	}
 
-	.row + .row {
+	function tick(id: string, checked: boolean) {
+		selection = checked ? [...(selection ?? []), id] : (selection ?? []).filter((it) => it !== id);
+	}
+
+	/** No labels, no header: the activity and session tables are lists of
+	    self-evident values and read better without one. */
+	const heading = $derived(columns.some((column) => column.label));
+
+	/** True once the table has been scrolled sideways, which is when the
+	    pinned column needs an edge to show what is passing under it. */
+	let scrolled = $state(false);
+
+	function track(event: Event) {
+		scrolled = (event.currentTarget as HTMLElement).scrollLeft > 0;
+	}
+</script>
+
+<div class="scroller" class:scrolled onscroll={track}>
+	<table>
+		{#if heading}
+			<thead>
+				<tr>
+					{#if selectable}
+						<th class="tick">
+							<Checkbox checked={headerState} onChange={tickAll} title="Select every row" />
+						</th>
+					{/if}
+
+					{#each columns as column (column.key)}
+						<th style:min-width={column.min} class:end={column.align === 'end'}>
+							<span class="label">
+								{#if column.icon}
+									<Icon icon={column.icon} size="0.9375rem" />
+								{/if}
+								{column.label}
+							</span>
+						</th>
+					{/each}
+					{#if onOpen}
+						<th class="pin"></th>
+					{/if}
+				</tr>
+			</thead>
+		{/if}
+
+		<tbody>
+			{#each rows as item (item.id)}
+				<tr class:clickable={onOpen !== undefined} onclick={() => onOpen?.(item)}>
+					{#if selectable}
+						<!-- Ticking a row is not opening it, so the click stops here. -->
+						<td class="tick" onclick={(event) => event.stopPropagation()}>
+							<Checkbox
+								checked={ticked.has(item.id)}
+								onChange={(checked) => tick(item.id, checked)}
+								title="Select this row"
+							/>
+						</td>
+					{/if}
+
+					{@render row(item)}
+
+					{#if onOpen}
+						<td class="pin">
+							<!-- The row itself is clickable; this is the same action as
+							     something to tab to, and the click it fires on its way up
+							     is the one the row handles. -->
+							<IconButton
+								icon={RiArrowRightLine}
+								label={label?.(item) ?? 'Open'}
+								size="sm"
+								placement="left"
+							/>
+						</td>
+					{/if}
+				</tr>
+			{:else}
+				<tr>
+					<td class="empty" colspan={columns.length + (onOpen ? 1 : 0) + (selectable ? 1 : 0)}>
+						{empty}
+					</td>
+				</tr>
+			{/each}
+		</tbody>
+	</table>
+</div>
+
+<style>
+	/* The table runs to the edges of the page — only the first and last cells
+	   are inset by the gutter — so it reads as part of the page rather than a
+	   box on it, the way PocketBase's tables do. */
+	.scroller {
+		overflow-x: auto;
 		border-top: 1px solid var(--color-border);
 	}
 
-	/* Grid items default to min-width:auto, so a long value refuses to shrink
-	   and spills into the next column. The cells come from a snippet, hence
-	   the global match. */
-	.row > :global(*) {
-		min-width: 0;
+	table {
+		width: 100%;
+		border-collapse: separate;
+		border-spacing: 0;
+	}
+
+	/* The cells of a row come from the caller's snippet, so they carry that
+	   component's scope rather than this one's: every rule that has to reach
+	   a `td` says so with :global, anchored to the table itself. */
+	th,
+	table :global(td) {
+		height: 50px;
+		transition: background-color var(--speed-fast);
+		padding: 0 var(--space-3);
+		border-bottom: 1px solid var(--color-border);
+		font-size: var(--text-base);
+		font-weight: 400;
+		text-align: left;
+		white-space: nowrap;
+	}
+
+	th {
+		height: 45px;
+		color: var(--color-text-hint);
+		font-size: var(--text-sm);
+		font-weight: 700;
+	}
+
+	.label {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+	}
+
+	th.end,
+	table :global(td.end) {
+		text-align: right;
+	}
+
+	th:first-child,
+	table :global(td:first-child) {
+		padding-left: var(--page-gutter);
+	}
+
+	th:last-child,
+	table :global(td:last-child) {
+		padding-right: var(--page-gutter);
+	}
+
+	tr.clickable {
+		cursor: pointer;
+	}
+
+	/* A whole row changing colour is a lot of colour, so the wash is faint:
+	   enough to follow the pointer across a wide table, not enough to shout.
+	   The pinned cells take it too, or they would stay white over it. */
+	tr.clickable:hover :global(td) {
+		background: var(--row-hover);
+	}
+
+	/* The checkboxes hold the left edge the way the arrows hold the right,
+	   so a wide table can still be ticked while it is scrolled. */
+	.tick {
+		position: sticky;
+		left: 0;
+		width: 1%;
+		padding-right: 0;
+		background: var(--color-surface);
+		transition: background-color var(--speed-fast);
+	}
+
+	.tick::after {
+		position: absolute;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		width: 1px;
+		background: var(--color-border);
+		opacity: 0;
+		transition: opacity var(--speed);
+		content: '';
+	}
+
+	.scrolled .tick::after {
+		opacity: 1;
+	}
+
+	.scrolled .tick {
+		box-shadow: 8px 0 8px -8px rgb(0 0 0 / 25%);
+	}
+
+	/* The arrow stays against the right edge while the rest of the row
+	   scrolls under it, so the way into a record is always in view. */
+	.pin {
+		position: sticky;
+		right: 0;
+		width: 1%;
+		background: var(--color-surface);
+		transition: background-color var(--speed-fast);
+	}
+
+	/* An edge on the pinned column, drawn only once something is passing
+	   under it. The line reads in both themes where a shadow alone would
+	   disappear against the dark one. */
+	.pin::before {
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		left: 0;
+		width: 1px;
+		background: var(--color-border);
+		opacity: 0;
+		transition: opacity var(--speed);
+		content: '';
+	}
+
+	.scrolled .pin {
+		box-shadow: -8px 0 8px -8px rgb(0 0 0 / 25%);
+	}
+
+	.scrolled .pin::before {
+		opacity: 1;
+	}
+
+	/* The arrow is quiet until the row is under the pointer. */
+	.pin :global(.icon-button) {
+		margin-left: auto;
+		color: var(--color-text-disabled);
+	}
+
+	tr.clickable:hover .pin :global(.icon-button) {
+		color: var(--color-text);
 	}
 
 	.empty {
-		padding: var(--space-5) var(--space-4);
+		height: auto;
+		padding: var(--space-5) var(--page-gutter);
 		color: var(--color-text-hint);
-		font-size: var(--text-base);
-	}
-
-	@media (max-width: 40rem) {
-		.row {
-			grid-template-columns: 1fr 1fr;
-			gap: var(--space-2);
-		}
+		white-space: normal;
 	}
 </style>

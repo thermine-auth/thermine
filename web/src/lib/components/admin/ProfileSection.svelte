@@ -36,6 +36,10 @@
 		margin-top: var(--space-5);
 	}
 
+	section {
+		padding-inline: var(--page-gutter);
+	}
+
 	header {
 		display: flex;
 		align-items: flex-start;

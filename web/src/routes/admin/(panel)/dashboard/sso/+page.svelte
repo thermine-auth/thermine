@@ -1,7 +1,15 @@
 <script lang="ts">
 	import PageHeading from '$lib/components/admin/PageHeading.svelte';
-	import { Badge, DataTable } from '$lib/components/ui';
+	import { Badge, DataTable, type Column } from '$lib/components/ui';
 	import { demoSso } from '$lib/demo';
+
+	const columns: Column[] = [
+		{ key: 'name', min: '10rem' },
+		{ key: 'protocol' },
+		{ key: 'domain' },
+		{ key: 'users' },
+		{ key: 'status' }
+	];
 </script>
 
 <svelte:head><title>SSO integrations · xermess admin</title></svelte:head>
@@ -12,17 +20,15 @@
 	demo
 />
 
-<DataTable
-	rows={demoSso}
-	empty="No integrations yet."
-	columns="minmax(8rem, 1fr) auto minmax(7rem, 1fr) auto auto"
->
+<DataTable {columns} rows={demoSso} empty="No integrations yet.">
 	{#snippet row(sso)}
-		<strong>{sso.name}</strong>
-		<span class="hint count">{sso.protocol}</span>
-		<span class="hint mono">{sso.domain}</span>
-		<span class="hint count">{sso.users.toLocaleString()} users</span>
-		<Badge tone={sso.status === 'active' ? 'success' : 'neutral'}>{sso.status}</Badge>
+		<td><strong>{sso.name}</strong></td>
+		<td class="hint count">{sso.protocol}</td>
+		<td class="hint mono">{sso.domain}</td>
+		<td class="hint count">{sso.users.toLocaleString()} users</td>
+		<td>
+			<Badge tone={sso.status === 'active' ? 'success' : 'neutral'}>{sso.status}</Badge>
+		</td>
 	{/snippet}
 </DataTable>
 

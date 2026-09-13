@@ -62,6 +62,12 @@ a {
 	text-underline-offset: 2px;
 }
 
+/* Page furniture — headings, toolbars, anything that is not a table — is
+   inset by the gutter. Tables are left to reach the edges. */
+.gutter {
+	padding-inline: var(--page-gutter);
+}
+
 code,
 kbd,
 samp,

@@ -162,6 +162,7 @@
 <style>
 	header {
 		margin-bottom: var(--space-5);
+		padding-inline: var(--page-gutter);
 	}
 
 	.subtitle {

@@ -28,6 +28,7 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
 		gap: var(--space-3);
+		padding-inline: var(--page-gutter);
 	}
 
 	.stat {

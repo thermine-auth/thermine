@@ -93,6 +93,14 @@ before this runs for real.
 | `GET`  | `/api/v1/admin/me`            | yes             | The signed-in administrator    |
 | `GET`  | `/api/v1/admin/overview`      | yes             | Counts and recent activity     |
 | `GET`  | `/api/v1/admin/logs`          | yes             | The activity log (`?limit=`)   |
+| `GET`  | `/api/v1/admin/users`         | yes             | List users (`?search=&verified=&limit=&offset=`) |
+| `POST` | `/api/v1/admin/users`         | yes             | Create a user                  |
+| `GET`  | `/api/v1/admin/users/:id`     | yes             | One user                       |
+| `PATCH`| `/api/v1/admin/users/:id`     | yes             | Update a user                  |
+| `DELETE`| `/api/v1/admin/users/:id`    | yes             | Delete a user                  |
+| `GET`  | `/api/v1/admin/user-fields`   | yes             | The fields a user record has   |
+| `POST` | `/api/v1/admin/user-fields`   | yes             | Add a field                    |
+| `DELETE`| `/api/v1/admin/user-fields/:id` | yes          | Remove a field                 |
 | `GET`  | `/api/v1/admin/sessions`      | yes             | The caller's own sessions      |
 
 Sessions are a random token in an HttpOnly cookie; the database keeps only a
@@ -139,10 +147,28 @@ User management  Users · Roles
 Settings  Organization · Languages
 ```
 
-Everything but Activity renders the placeholder rows in `lib/demo.ts`, marked
-with a dot in the sidebar and a badge on the page, so nothing there is
-mistaken for real state. Delete a block from that file as soon as its section
-talks to the API.
+Activity and Users are real; everything else renders the placeholder rows in
+`lib/demo.ts`, marked with a dot in the sidebar and a badge on the page, so
+nothing there is mistaken for real state. Delete a block from that file as
+soon as its section talks to the API.
+
+### Users and their fields
+
+A user has an email and a verified flag as columns. Everything else an
+organisation wants to keep is defined at runtime in `user_fields` and stored
+in `users.data`, so adding a first name or a "phone verified" flag is a row in
+a table rather than a migration.
+
+`internal/model/user_field.go` owns what a field means: the types on offer
+(`text`, `number`, `bool`, `email`, `date`) and `Normalise`, which checks a
+submitted value and returns what should be stored — the one place to change
+when adding a type. The panel builds both its table and its form from the same
+list, so a new field appears as a column and an input without any code
+changing.
+
+Searching matches the email or any stored value, because `data` is searched as
+text; the search and the verified filter live in the URL, so the server renders
+the result and a filtered list can be linked to.
 
 The profile page collects what belongs to the signed-in account: profile
 information, two-factor, theme, language, email, password and sessions. Theme
@@ -174,11 +200,11 @@ so the server loads run again with the new session.
 and never reach for an Ark UI primitive directly, so a change to how a field
 looks happens in one file.
 
-**Layout.** Pages sit in a centred column capped at `--content-width`
-(72rem); the dashboard takes the full width for its sidebar and centres its
-own column beside it. Below 55rem the sidebar becomes a scrollable row above
-the content, and below 30rem the header sections become their icons alone —
-their labels stay in the accessible name.
+**Layout.** Pages fill the width, the way PocketBase does: a table with room
+for its columns reads better than one centred in a narrow column. Below 55rem
+the sidebar becomes a scrollable row above the content, and below 30rem the
+header sections become their icons alone — their labels stay in the accessible
+name.
 
 **Styling.** [Ark UI](https://ark-ui.com) ships no CSS: every part it renders
 carries `data-scope` and `data-part`, and `lib/styles/ark.css` styles those

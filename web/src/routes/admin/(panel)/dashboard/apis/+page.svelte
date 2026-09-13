@@ -1,7 +1,15 @@
 <script lang="ts">
 	import PageHeading from '$lib/components/admin/PageHeading.svelte';
-	import { Badge, DataTable } from '$lib/components/ui';
+	import { Badge, DataTable, type Column } from '$lib/components/ui';
 	import { demoApis } from '$lib/demo';
+
+	const columns: Column[] = [
+		{ key: 'name', min: '10rem' },
+		{ key: 'identifier', min: '14rem' },
+		{ key: 'scopes' },
+		{ key: 'lifetime' },
+		{ key: 'status' }
+	];
 </script>
 
 <svelte:head><title>APIs · xermess admin</title></svelte:head>
@@ -12,17 +20,15 @@
 	demo
 />
 
-<DataTable
-	rows={demoApis}
-	empty="No APIs registered."
-	columns="minmax(8rem, 1fr) minmax(12rem, 1.6fr) auto auto auto"
->
+<DataTable {columns} rows={demoApis} empty="No APIs registered.">
 	{#snippet row(api)}
-		<strong>{api.name}</strong>
-		<span class="hint mono url">{api.identifier}</span>
-		<span class="hint count">{api.scopes} scopes</span>
-		<span class="hint count">{api.tokenLifetime}</span>
-		<Badge tone={api.status === 'active' ? 'success' : 'neutral'}>{api.status}</Badge>
+		<td><strong>{api.name}</strong></td>
+		<td class="hint mono url">{api.identifier}</td>
+		<td class="hint count">{api.scopes} scopes</td>
+		<td class="hint count">{api.tokenLifetime}</td>
+		<td>
+			<Badge tone={api.status === 'active' ? 'success' : 'neutral'}>{api.status}</Badge>
+		</td>
 	{/snippet}
 </DataTable>
 
@@ -35,6 +41,7 @@
 		font-size: var(--text-sm);
 	}
 	.url {
+		max-width: 24rem;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
