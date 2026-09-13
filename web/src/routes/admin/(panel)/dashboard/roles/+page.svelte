@@ -4,13 +4,11 @@
 	import { demoRoles } from '$lib/demo';
 </script>
 
-<svelte:head>
-	<title>Roles · xermess admin</title>
-</svelte:head>
+<svelte:head><title>Roles · xermess admin</title></svelte:head>
 
 <PageHeading
 	title="Roles"
-	description="A role is a named bundle of permissions. Administrators hold roles."
+	description="A role is a named bundle of permissions. People hold roles."
 	demo
 />
 
@@ -23,7 +21,7 @@
 		<span class="mono name">{role.name}</span>
 		<span class="hint">{role.description}</span>
 		<span class="hint count">{role.permissions} permissions</span>
-		<span class="hint count">{role.admins} admins</span>
+		<span class="hint count">{role.members} members</span>
 	{/snippet}
 </DataTable>
 
@@ -31,16 +29,13 @@
 	.name {
 		font-weight: 600;
 	}
-
 	.hint {
 		color: var(--color-text-hint);
 	}
-
 	.mono {
 		font-family: var(--font-mono);
 		font-size: var(--text-sm);
 	}
-
 	.count {
 		font-size: var(--text-sm);
 		white-space: nowrap;

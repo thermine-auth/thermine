@@ -1,66 +1,279 @@
 /**
- * Placeholder data for the dashboard sections that have no backend yet.
+ * Placeholder data for the sections that have no backend yet.
  *
  * Nothing here is real: it exists so the sidebar has somewhere to lead and so
  * the tables can be designed against realistic shapes. Delete a block as soon
  * as its section talks to the API.
  */
 
-export type DemoAdmin = {
+type Status = 'active' | 'disabled' | 'draft';
+
+export type DemoApplication = {
 	id: string;
 	name: string;
-	username: string;
-	email: string;
-	role: string;
-	status: 'active' | 'invited' | 'suspended';
-	lastSeen: string;
+	kind: string;
+	clientId: string;
+	users: number;
+	status: Status;
 };
 
-export const demoAdmins: DemoAdmin[] = [
+export const demoApplications: DemoApplication[] = [
 	{
-		id: 'a1',
-		name: 'Ada Lovelace',
-		username: 'ada',
-		email: 'ada@xermess.dev',
-		role: 'super_admin',
-		status: 'active',
-		lastSeen: '2 minutes ago'
+		id: 'app1',
+		name: 'Customer portal',
+		kind: 'Single page app',
+		clientId: 'xm_c7f2a9',
+		users: 18420,
+		status: 'active'
 	},
 	{
-		id: 'a2',
-		name: 'Grace Hopper',
-		username: 'grace',
-		email: 'grace@xermess.dev',
-		role: 'admin',
-		status: 'active',
-		lastSeen: '3 hours ago'
+		id: 'app2',
+		name: 'Mobile app',
+		kind: 'Native',
+		clientId: 'xm_2b91de',
+		users: 9037,
+		status: 'active'
 	},
 	{
-		id: 'a3',
-		name: 'Alan Turing',
-		username: 'alan',
-		email: 'alan@xermess.dev',
-		role: 'support',
-		status: 'invited',
-		lastSeen: 'Never'
+		id: 'app3',
+		name: 'Back office',
+		kind: 'Regular web app',
+		clientId: 'xm_44ac10',
+		users: 126,
+		status: 'active'
 	},
 	{
-		id: 'a4',
-		name: 'Katherine Johnson',
-		username: 'katherine',
-		email: 'katherine@xermess.dev',
-		role: 'auditor',
-		status: 'active',
-		lastSeen: 'Yesterday'
+		id: 'app4',
+		name: 'Partner sandbox',
+		kind: 'Machine to machine',
+		clientId: 'xm_9f0b77',
+		users: 0,
+		status: 'draft'
+	}
+];
+
+export type DemoApi = {
+	id: string;
+	name: string;
+	identifier: string;
+	scopes: number;
+	tokenLifetime: string;
+	status: Status;
+};
+
+export const demoApis: DemoApi[] = [
+	{
+		id: 'api1',
+		name: 'Accounts API',
+		identifier: 'https://api.xermess.dev/accounts',
+		scopes: 14,
+		tokenLifetime: '1 hour',
+		status: 'active'
 	},
 	{
-		id: 'a5',
-		name: 'Edsger Dijkstra',
-		username: 'edsger',
-		email: 'edsger@xermess.dev',
-		role: 'support',
-		status: 'suspended',
-		lastSeen: '3 weeks ago'
+		id: 'api2',
+		name: 'Billing API',
+		identifier: 'https://api.xermess.dev/billing',
+		scopes: 8,
+		tokenLifetime: '30 minutes',
+		status: 'active'
+	},
+	{
+		id: 'api3',
+		name: 'Reporting API',
+		identifier: 'https://api.xermess.dev/reports',
+		scopes: 3,
+		tokenLifetime: '12 hours',
+		status: 'disabled'
+	}
+];
+
+export type DemoSso = {
+	id: string;
+	name: string;
+	protocol: string;
+	domain: string;
+	users: number;
+	status: Status;
+};
+
+export const demoSso: DemoSso[] = [
+	{
+		id: 'sso1',
+		name: 'Acme Corp',
+		protocol: 'SAML 2.0',
+		domain: 'acme.com',
+		users: 2140,
+		status: 'active'
+	},
+	{
+		id: 'sso2',
+		name: 'Globex',
+		protocol: 'OIDC',
+		domain: 'globex.io',
+		users: 618,
+		status: 'active'
+	},
+	{
+		id: 'sso3',
+		name: 'Initech',
+		protocol: 'SAML 2.0',
+		domain: 'initech.co',
+		users: 0,
+		status: 'draft'
+	}
+];
+
+export type DemoConnection = {
+	id: string;
+	name: string;
+	engine: string;
+	users: number;
+	applications: number;
+	status: Status;
+};
+
+export const demoConnections: DemoConnection[] = [
+	{
+		id: 'db1',
+		name: 'Username & password',
+		engine: 'xermess',
+		users: 27583,
+		applications: 4,
+		status: 'active'
+	},
+	{
+		id: 'db2',
+		name: 'Legacy accounts',
+		engine: 'External MySQL',
+		users: 4120,
+		applications: 1,
+		status: 'active'
+	},
+	{
+		id: 'db3',
+		name: 'Staff directory',
+		engine: 'LDAP',
+		users: 212,
+		applications: 1,
+		status: 'disabled'
+	}
+];
+
+export type DemoProvider = {
+	id: string;
+	name: string;
+	clientId: string;
+	logins: number;
+	status: Status;
+};
+
+export const demoProviders: DemoProvider[] = [
+	{
+		id: 'soc1',
+		name: 'Google',
+		clientId: '8417…apps.googleusercontent.com',
+		logins: 12904,
+		status: 'active'
+	},
+	{ id: 'soc2', name: 'GitHub', clientId: 'Iv1.4b2c…', logins: 3311, status: 'active' },
+	{ id: 'soc3', name: 'Apple', clientId: 'dev.xermess.signin', logins: 1877, status: 'active' },
+	{ id: 'soc4', name: 'Microsoft', clientId: 'f0c1…', logins: 0, status: 'draft' }
+];
+
+export type DemoFlow = {
+	id: string;
+	name: string;
+	steps: string;
+	applications: number;
+	isDefault: boolean;
+	status: Status;
+};
+
+export const demoFlows: DemoFlow[] = [
+	{
+		id: 'flow1',
+		name: 'Standard login',
+		steps: 'Identifier → Password → MFA',
+		applications: 3,
+		isDefault: true,
+		status: 'active'
+	},
+	{
+		id: 'flow2',
+		name: 'Passwordless',
+		steps: 'Identifier → Email code',
+		applications: 1,
+		isDefault: false,
+		status: 'active'
+	},
+	{
+		id: 'flow3',
+		name: 'Staff login',
+		steps: 'SSO → MFA',
+		applications: 1,
+		isDefault: false,
+		status: 'active'
+	},
+	{
+		id: 'flow4',
+		name: 'Trial signup',
+		steps: 'Identifier → Password',
+		applications: 0,
+		isDefault: false,
+		status: 'draft'
+	}
+];
+
+export type DemoUser = {
+	id: string;
+	name: string;
+	email: string;
+	connection: string;
+	lastLogin: string;
+	status: 'active' | 'invited' | 'blocked';
+};
+
+export const demoUsers: DemoUser[] = [
+	{
+		id: 'u1',
+		name: 'Mira Chen',
+		email: 'mira@acme.com',
+		connection: 'Google',
+		lastLogin: '4 minutes ago',
+		status: 'active'
+	},
+	{
+		id: 'u2',
+		name: 'Tomas Neal',
+		email: 'tomas@globex.io',
+		connection: 'Username & password',
+		lastLogin: '2 hours ago',
+		status: 'active'
+	},
+	{
+		id: 'u3',
+		name: 'Priya Raman',
+		email: 'priya@acme.com',
+		connection: 'SAML · Acme Corp',
+		lastLogin: 'Yesterday',
+		status: 'active'
+	},
+	{
+		id: 'u4',
+		name: 'Jonas Weber',
+		email: 'jonas@initech.co',
+		connection: 'Username & password',
+		lastLogin: 'Never',
+		status: 'invited'
+	},
+	{
+		id: 'u5',
+		name: 'Ade Oyelaran',
+		email: 'ade@globex.io',
+		connection: 'GitHub',
+		lastLogin: '3 weeks ago',
+		status: 'blocked'
 	}
 ];
 
@@ -69,112 +282,63 @@ export type DemoRole = {
 	name: string;
 	description: string;
 	permissions: number;
-	admins: number;
+	members: number;
 };
 
 export const demoRoles: DemoRole[] = [
 	{
 		id: 'r1',
-		name: 'super_admin',
-		description: 'Everything, including other administrators',
-		permissions: 24,
-		admins: 1
+		name: 'owner',
+		description: 'Everything, including billing and other owners',
+		permissions: 42,
+		members: 2
 	},
 	{
 		id: 'r2',
-		name: 'admin',
-		description: 'Day to day administration',
-		permissions: 17,
-		admins: 1
+		name: 'administrator',
+		description: 'Applications, connections and users',
+		permissions: 31,
+		members: 5
 	},
 	{
 		id: 'r3',
 		name: 'support',
-		description: 'Read accounts and reset passwords',
-		permissions: 8,
-		admins: 2
+		description: 'Read users and reset their passwords',
+		permissions: 9,
+		members: 12
 	},
 	{
 		id: 'r4',
 		name: 'auditor',
 		description: 'Read only, including the activity log',
-		permissions: 5,
-		admins: 1
+		permissions: 6,
+		members: 3
 	}
 ];
 
-export type DemoKey = {
+export type DemoLanguage = {
 	id: string;
-	label: string;
-	prefix: string;
-	scopes: string;
-	created: string;
-	lastUsed: string;
-	active: boolean;
+	name: string;
+	code: string;
+	translated: number;
+	isDefault: boolean;
+	status: Status;
 };
 
-export const demoKeys: DemoKey[] = [
-	{
-		id: 'k1',
-		label: 'Web app',
-		prefix: 'xm_live_8f2a…',
-		scopes: 'tokens:issue, users:read',
-		created: '12 Aug 2026',
-		lastUsed: '4 minutes ago',
-		active: true
-	},
-	{
-		id: 'k2',
-		label: 'Mobile app',
-		prefix: 'xm_live_b71c…',
-		scopes: 'tokens:issue',
-		created: '3 Jul 2026',
-		lastUsed: '2 hours ago',
-		active: true
-	},
-	{
-		id: 'k3',
-		label: 'Nightly export',
-		prefix: 'xm_live_0d94…',
-		scopes: 'users:read',
-		created: '19 Feb 2026',
-		lastUsed: '6 weeks ago',
-		active: false
-	}
+export const demoLanguages: DemoLanguage[] = [
+	{ id: 'l1', name: 'English', code: 'en', translated: 100, isDefault: true, status: 'active' },
+	{ id: 'l2', name: 'Kyrgyz', code: 'ky', translated: 92, isDefault: false, status: 'active' },
+	{ id: 'l3', name: 'Russian', code: 'ru', translated: 88, isDefault: false, status: 'active' },
+	{ id: 'l4', name: 'Turkish', code: 'tr', translated: 41, isDefault: false, status: 'draft' }
 ];
 
-export type DemoWebhook = {
-	id: string;
-	event: string;
-	url: string;
-	delivered: number;
-	failed: number;
-	active: boolean;
+/** The organisation this panel administers. */
+export const demoOrganization = {
+	name: 'Xermess',
+	slug: 'xermess',
+	domain: 'xermess.dev',
+	region: 'eu-central',
+	plan: 'Growth',
+	created: '4 February 2026',
+	supportEmail: 'support@xermess.dev'
 };
-
-export const demoWebhooks: DemoWebhook[] = [
-	{
-		id: 'w1',
-		event: 'admin.login',
-		url: 'https://hooks.xermess.dev/audit',
-		delivered: 1842,
-		failed: 0,
-		active: true
-	},
-	{
-		id: 'w2',
-		event: 'admin.login_failed',
-		url: 'https://hooks.xermess.dev/alerts',
-		delivered: 96,
-		failed: 2,
-		active: true
-	},
-	{
-		id: 'w3',
-		event: 'user.created',
-		url: 'https://crm.example.com/xermess',
-		delivered: 12043,
-		failed: 31,
-		active: false
-	}
-];

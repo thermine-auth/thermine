@@ -20,10 +20,10 @@
 </script>
 
 <svelte:head>
-	<title>Overview · xermess admin</title>
+	<title>Activity · xermess admin</title>
 </svelte:head>
 
-<h1>Overview</h1>
+<h1>Activity</h1>
 <p class="subtitle">
 	Signed in as {data.admin.full_name} ({data.admin.roles.join(', ')})
 </p>

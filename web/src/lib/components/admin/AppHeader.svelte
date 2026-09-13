@@ -1,12 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
-	import {
-		RiFileListLine,
-		RiSettings3Line,
-		RiShieldKeyholeLine,
-		RiDashboardLine
-	} from 'svelte-remixicon';
+	import { RiFileListLine, RiShieldKeyholeLine, RiDashboardLine } from 'svelte-remixicon';
 	import type { Admin } from '$lib/api';
 	import { Icon, ThemeToggle } from '$lib/components/ui';
 	import AccountMenu from './AccountMenu.svelte';
@@ -15,10 +10,11 @@
 
 	let { admin }: Props = $props();
 
+	// The top-level areas. Everything inside the dashboard has its own sidebar,
+	// and anything to do with this account lives in the menu on the right.
 	const links = [
 		{ href: resolve('/admin/dashboard'), label: 'Dashboard', icon: RiDashboardLine },
-		{ href: resolve('/admin/logs'), label: 'Logs', icon: RiFileListLine },
-		{ href: resolve('/admin/settings'), label: 'Settings', icon: RiSettings3Line }
+		{ href: resolve('/admin/logs'), label: 'Logs', icon: RiFileListLine }
 	];
 
 	/** A link is current when the page is it or sits below it. */

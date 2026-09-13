@@ -4,78 +4,110 @@
 	import type { RouteId } from '$app/types';
 	import type { ComponentType } from 'svelte';
 	import {
-		RiDashboardLine,
+		RiAppsLine,
+		RiBuildingLine,
+		RiCodeBoxLine,
+		RiDatabase2Line,
+		RiGitBranchLine,
 		RiGroupLine,
-		RiKey2Line,
+		RiLinksLine,
+		RiPulseLine,
+		RiShareLine,
 		RiShieldUserLine,
-		RiWebhookLine
+		RiTranslate2
 	} from 'svelte-remixicon';
 	import { Icon } from '$lib/components/ui';
 
-	/** SvelteKit's own route ids. They carry the (panel) layout group, which
-	    resolve() strips when turning them into a URL. */
-	type Route = RouteId;
-
 	type Item = {
-		route: Route;
+		route: RouteId;
 		label: string;
 		icon: ComponentType;
-		/** Shown on the right of the row: a count, or a word like "soon". */
-		hint?: string;
 		/** Marks a section that is still placeholder data. */
 		demo?: boolean;
 	};
 
-	type Group = { label: string; items: Item[] };
+	/** A group with no label is a section on its own, shown above the rest. */
+	type Group = { label?: string; items: Item[] };
 
 	const groups: Group[] = [
 		{
-			label: 'General',
-			items: [{ route: '/admin/(panel)/dashboard', label: 'Overview', icon: RiDashboardLine }]
+			items: [{ route: '/admin/(panel)/dashboard', label: 'Activity', icon: RiPulseLine }]
 		},
 		{
-			label: 'Access',
+			label: 'Applications',
 			items: [
 				{
-					route: '/admin/(panel)/dashboard/admins',
-					label: 'Administrators',
-					icon: RiGroupLine,
-					hint: '5',
+					route: '/admin/(panel)/dashboard/applications',
+					label: 'Applications',
+					icon: RiAppsLine,
 					demo: true
 				},
+				{ route: '/admin/(panel)/dashboard/apis', label: 'APIs', icon: RiCodeBoxLine, demo: true },
 				{
-					route: '/admin/(panel)/dashboard/roles',
-					label: 'Roles',
-					icon: RiShieldUserLine,
-					hint: '4',
+					route: '/admin/(panel)/dashboard/sso',
+					label: 'SSO integrations',
+					icon: RiLinksLine,
 					demo: true
 				}
 			]
 		},
 		{
-			label: 'Integrations',
+			label: 'Authentication',
 			items: [
 				{
-					route: '/admin/(panel)/dashboard/api-keys',
-					label: 'API keys',
-					icon: RiKey2Line,
-					hint: '3',
+					route: '/admin/(panel)/dashboard/database',
+					label: 'Database',
+					icon: RiDatabase2Line,
 					demo: true
 				},
 				{
-					route: '/admin/(panel)/dashboard/webhooks',
-					label: 'Webhooks',
-					icon: RiWebhookLine,
-					hint: '3',
+					route: '/admin/(panel)/dashboard/social',
+					label: 'Social',
+					icon: RiShareLine,
+					demo: true
+				},
+				{
+					route: '/admin/(panel)/dashboard/flows',
+					label: 'Login flows',
+					icon: RiGitBranchLine,
+					demo: true
+				}
+			]
+		},
+		{
+			label: 'User management',
+			items: [
+				{ route: '/admin/(panel)/dashboard/users', label: 'Users', icon: RiGroupLine, demo: true },
+				{
+					route: '/admin/(panel)/dashboard/roles',
+					label: 'Roles',
+					icon: RiShieldUserLine,
+					demo: true
+				}
+			]
+		},
+		{
+			label: 'Settings',
+			items: [
+				{
+					route: '/admin/(panel)/dashboard/organization',
+					label: 'Organization',
+					icon: RiBuildingLine,
+					demo: true
+				},
+				{
+					route: '/admin/(panel)/dashboard/languages',
+					label: 'Languages',
+					icon: RiTranslate2,
 					demo: true
 				}
 			]
 		}
 	];
 
-	/** Overview is the section's own page, so it only matches exactly; the
+	/** Activity is the section's own page, so it only matches exactly; the
 	    others also match anything below them. */
-	function isCurrent(route: Route): boolean {
+	function isCurrent(route: RouteId): boolean {
 		const href = resolve(route);
 		const path = page.url.pathname;
 
@@ -86,10 +118,12 @@
 </script>
 
 <aside>
-	<nav aria-label="Dashboard sections">
-		{#each groups as group (group.label)}
+	<nav aria-label="Sections">
+		{#each groups as group (group.label ?? 'top')}
 			<div class="group">
-				<h2>{group.label}</h2>
+				{#if group.label}
+					<h2>{group.label}</h2>
+				{/if}
 
 				{#each group.items as item (item.route)}
 					<a
@@ -99,8 +133,8 @@
 					>
 						<Icon icon={item.icon} />
 						<span class="label">{item.label}</span>
-						{#if item.hint}
-							<span class="hint">{item.hint}</span>
+						{#if item.demo}
+							<span class="dot" title="Placeholder data" aria-hidden="true"></span>
 						{/if}
 					</a>
 				{/each}
@@ -108,7 +142,10 @@
 		{/each}
 	</nav>
 
-	<p class="note">Sections marked with placeholder data are not wired to the API yet.</p>
+	<p class="note">
+		<span class="dot" aria-hidden="true"></span>
+		Sections marked this way show placeholder data.
+	</p>
 </aside>
 
 <style>
@@ -120,7 +157,7 @@
 		justify-content: space-between;
 		gap: var(--space-4);
 		height: calc(100dvh - var(--header-height));
-		padding: var(--space-4) var(--space-2);
+		padding: var(--space-3) var(--space-2) var(--space-2);
 		border-right: 1px solid var(--color-border);
 		background: var(--color-surface);
 		overflow-y: auto;
@@ -129,21 +166,21 @@
 	nav {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-4);
+		gap: var(--space-3);
 	}
 
 	.group {
 		display: flex;
 		flex-direction: column;
-		gap: 2px;
+		gap: 1px;
 	}
 
 	h2 {
-		padding: 0 var(--space-2) var(--space-1);
+		padding: var(--space-2) var(--space-2) var(--space-1);
 		color: var(--color-text-hint);
 		font-size: var(--text-xs);
 		font-weight: 600;
-		letter-spacing: 0.04em;
+		letter-spacing: 0.06em;
 		text-transform: uppercase;
 	}
 
@@ -173,15 +210,26 @@
 
 	.label {
 		flex: 1;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
-	.hint {
-		color: var(--color-text-hint);
-		font-size: var(--text-sm);
-		font-family: var(--font-mono);
+	/* A quiet dot rather than a word: it marks the section without competing
+	   with its name. */
+	.dot {
+		flex: none;
+		width: 5px;
+		height: 5px;
+		border-radius: var(--radius-pill);
+		background: var(--color-text-hint);
+		opacity: 0.5;
 	}
 
 	.note {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
 		padding: var(--space-2);
 		color: var(--color-text-hint);
 		font-size: var(--text-xs);
@@ -189,8 +237,7 @@
 	}
 
 	/* Narrow screens have no room for a column, so the sections become one
-	   scrollable row above the content: the group labels and the footnote
-	   would only take space from it. */
+	   scrollable row above the content. */
 	@media (max-width: 55rem) {
 		aside {
 			position: sticky;
@@ -204,11 +251,7 @@
 			overscroll-behavior-x: contain;
 		}
 
-		nav {
-			flex-direction: row;
-			gap: var(--space-1);
-		}
-
+		nav,
 		.group {
 			flex-direction: row;
 			gap: var(--space-1);
@@ -216,7 +259,7 @@
 
 		h2,
 		.note,
-		.hint {
+		.dot {
 			display: none;
 		}
 

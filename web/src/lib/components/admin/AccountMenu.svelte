@@ -2,7 +2,7 @@
 	import { goto, invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { Menu } from '@ark-ui/svelte/menu';
-	import { RiArrowDownSLine, RiLogoutBoxRLine } from 'svelte-remixicon';
+	import { RiArrowDownSLine, RiLogoutBoxRLine, RiUserSettingsLine } from 'svelte-remixicon';
 	import { adminApi, type Admin } from '$lib/api';
 	import { Icon } from '$lib/components/ui';
 
@@ -14,6 +14,15 @@
 
 	/** The first letter of the name, which is enough to tell accounts apart. */
 	const monogram = $derived((admin.full_name || admin.username).charAt(0).toUpperCase());
+
+	async function open(value: string) {
+		if (value === 'profile') {
+			await goto(resolve('/admin/profile'));
+			return;
+		}
+
+		await signOut();
+	}
 
 	async function signOut() {
 		signingOut = true;
@@ -31,7 +40,7 @@
 
 <Menu.Root
 	positioning={{ placement: 'bottom-end', gutter: 6 }}
-	onSelect={(details) => details.value === 'sign-out' && signOut()}
+	onSelect={(details) => open(details.value)}
 >
 	<Menu.Trigger class="trigger">
 		<span class="monogram" aria-hidden="true">{monogram}</span>
@@ -48,6 +57,11 @@
 			</div>
 
 			<Menu.Separator />
+
+			<Menu.Item value="profile">
+				<Icon icon={RiUserSettingsLine} />
+				Profile
+			</Menu.Item>
 
 			<Menu.Item value="sign-out">
 				<Icon icon={RiLogoutBoxRLine} />

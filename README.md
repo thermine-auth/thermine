@@ -66,7 +66,7 @@ web/src/lib/components/admin/  the panel's own pieces: header, tables, stats
 web/src/lib/styles/            fonts.css, tokens.css, base.css, ark.css
 web/src/lib/theme.svelte.ts    the light/dark/auto choice
 web/src/routes/admin/login/    the sign-in page
-web/src/routes/admin/(panel)/  dashboard, logs, settings — everything behind a session
+web/src/routes/admin/(panel)/  dashboard, logs, profile — everything behind a session
 web/src/lib/demo.ts            placeholder rows for the sections with no backend
 ```
 
@@ -127,11 +127,27 @@ Then open http://localhost:5173/admin/login and sign in with
 `XERMESS_ADMIN_USERNAME` and `XERMESS_ADMIN_PASSWORD`. Signing in leads to
 `/admin/dashboard`.
 
-The header carries the three top-level sections — Dashboard, Logs, Settings —
-and the dashboard has its own sidebar for what sits under it. Its Overview
-page is real; Administrators, Roles, API keys and Webhooks render the
-placeholder rows in `lib/demo.ts` and are marked as such in the interface.
-Delete a block from that file as soon as its section talks to the API.
+The header carries the two top-level areas — Dashboard and Logs — with the
+account menu on the right, which is where Profile and Sign out live. The
+dashboard has its own sidebar:
+
+```
+Activity                      metrics and recent events   (real)
+Applications  Applications · APIs · SSO integrations
+Authentication  Database · Social · Login flows
+User management  Users · Roles
+Settings  Organization · Languages
+```
+
+Everything but Activity renders the placeholder rows in `lib/demo.ts`, marked
+with a dot in the sidebar and a badge on the page, so nothing there is
+mistaken for real state. Delete a block from that file as soon as its section
+talks to the API.
+
+The profile page collects what belongs to the signed-in account: profile
+information, two-factor, theme, language, email, password and sessions. Theme
+and sign out work; the rest are marked "not wired up" and their controls are
+disabled rather than pretending.
 
 `web/.env` names the API in `PUBLIC_API_URL`, used both by the server when it
 renders a page and by the browser for signing in and out — which is why
