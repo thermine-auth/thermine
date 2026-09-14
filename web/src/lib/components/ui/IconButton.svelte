@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Portal } from '@ark-ui/svelte/portal';
 	import { Tooltip } from '@ark-ui/svelte/tooltip';
 	import type { ComponentType } from 'svelte';
 	import type { ControlProps, Size } from './control';
@@ -56,7 +57,11 @@
 		{/if}
 	</Tooltip.Trigger>
 
-	<Tooltip.Positioner>
-		<Tooltip.Content>{label}</Tooltip.Content>
-	</Tooltip.Positioner>
+	<!-- Portalled to the end of the document, so no sticky column, scrolling
+	     table or positioned heading it is opened from can cover or clip it. -->
+	<Portal>
+		<Tooltip.Positioner>
+			<Tooltip.Content>{label}</Tooltip.Content>
+		</Tooltip.Positioner>
+	</Portal>
 </Tooltip.Root>

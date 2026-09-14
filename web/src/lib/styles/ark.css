@@ -144,7 +144,8 @@
 /* Menus, used by the account menu in the header. */
 
 [data-scope='menu'][data-part='content'] {
-	z-index: 20;
+	/* Above the sticky header (10) it opens from; below a drawer (40, 50). */
+	z-index: 30;
 	min-width: 12rem;
 	padding: var(--space-1);
 	border: 1px solid var(--color-border);
@@ -191,11 +192,11 @@
 
 /* Tooltips, shown by IconButton and by a folded sidebar. */
 
-[data-scope='tooltip'][data-part='positioner'] {
-	z-index: 60;
-}
-
 [data-scope='tooltip'][data-part='content'] {
+	/* Named on the content, not the positioner: Zag writes the positioner's
+	   z-index inline, copied from the content's. Above everything else a
+	   tooltip can be opened from, a drawer and an open select included. */
+	z-index: 80;
 	padding: 5px 9px;
 	border-radius: var(--radius-sm);
 	background: var(--tooltip-surface);

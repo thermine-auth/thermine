@@ -1,188 +1,23 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
-	import type { RouteId } from '$app/types';
-	import type { ComponentType } from 'svelte';
-	import {
-		RiAdminLine,
-		RiAppsLine,
-		RiBuildingLine,
-		RiCodeBoxLine,
-		RiDatabase2Line,
-		RiFileList3Line,
-		RiGitBranchLine,
-		RiGroupLine,
-		RiLinksLine,
-		RiPulseLine,
-		RiShareLine,
-		RiShieldKeyholeLine,
-		RiShieldUserLine,
-		RiSidebarFoldLine,
-		RiSidebarUnfoldLine,
-		RiTranslate2
-	} from 'svelte-remixicon';
+	import { RiSidebarFoldLine, RiSidebarUnfoldLine } from 'svelte-remixicon';
 	import type { Admin } from '$lib/api';
 	import { Icon, Tooltip } from '$lib/components/ui';
-	import { can, canAnywhere } from '$lib/permissions';
-
-	/** A page the sidebar can lead to: one with no parameters to fill in. */
-	type Section = Exclude<RouteId, `${string}[${string}`>;
+	import SidebarLink from './sidebar/SidebarLink.svelte';
+	import { visibleSections, type Section } from './sidebar/sections';
 
 	type Props = {
-		/** Folded to icons only. The width itself is set by the layout. */
+		/** Folded to icons only. The width itself is set by the panel layout. */
 		collapsed: boolean;
 		onToggle: () => void;
 	};
 
 	let { collapsed, onToggle }: Props = $props();
 
-	type Item = {
-		route: Section;
-		label: string;
-		icon: ComponentType;
-		/** Marks a section that is still placeholder data. */
-		demo?: boolean;
-		/** Marks a section that is not built yet. */
-		soon?: boolean;
-		/** Whether the signed-in administrator may open it. Left out, anyone
-		    may. */
-		allowed?: (admin: Admin) => boolean;
-	};
+	const groups = $derived(visibleSections(page.data.admin as Admin | undefined));
 
-	/** A group with no label is a section on its own, shown above the rest. */
-	type Group = { label?: string; items: Item[] };
-
-	const groups: Group[] = [
-		{
-			items: [
-				{
-					route: '/admin/(panel)/dashboard',
-					label: 'Activity',
-					icon: RiPulseLine,
-					allowed: (admin) => can(admin, 'activity.read')
-				},
-				{
-					route: '/admin/(panel)/dashboard/logs',
-					label: 'Logs',
-					icon: RiFileList3Line,
-					allowed: (admin) => can(admin, 'activity.read')
-				}
-			]
-		},
-		{
-			label: 'Applications',
-			items: [
-				{
-					route: '/admin/(panel)/dashboard/applications',
-					label: 'Applications',
-					icon: RiAppsLine,
-					allowed: (admin) => canAnywhere(admin, 'applications.read')
-				},
-				{
-					route: '/admin/(panel)/dashboard/apis',
-					label: 'APIs',
-					icon: RiCodeBoxLine,
-					allowed: (admin) => can(admin, 'apis.read')
-				},
-				{
-					route: '/admin/(panel)/dashboard/sso',
-					label: 'SSO integrations',
-					icon: RiLinksLine,
-					soon: true
-				}
-			]
-		},
-		{
-			label: 'Authentication',
-			items: [
-				{
-					route: '/admin/(panel)/dashboard/database',
-					label: 'Database',
-					icon: RiDatabase2Line,
-					demo: true
-				},
-				{
-					route: '/admin/(panel)/dashboard/social',
-					label: 'Social',
-					icon: RiShareLine,
-					demo: true
-				},
-				{
-					route: '/admin/(panel)/dashboard/flows',
-					label: 'Login flows',
-					icon: RiGitBranchLine,
-					demo: true
-				}
-			]
-		},
-		{
-			label: 'User management',
-			items: [
-				{
-					route: '/admin/(panel)/dashboard/users',
-					label: 'Users',
-					icon: RiGroupLine,
-					allowed: (admin) => can(admin, 'users.read')
-				},
-				{
-					route: '/admin/(panel)/dashboard/roles',
-					label: 'Roles',
-					icon: RiShieldUserLine,
-					allowed: (admin) =>
-						canAnywhere(admin, 'users.read') || canAnywhere(admin, 'applications.read')
-				}
-			]
-		},
-		{
-			label: 'Administration',
-			items: [
-				{
-					route: '/admin/(panel)/dashboard/admins',
-					label: 'Administrators',
-					icon: RiAdminLine,
-					allowed: (admin) => admin.is_super_admin
-				},
-				{
-					route: '/admin/(panel)/dashboard/admin-roles',
-					label: 'Admin roles',
-					icon: RiShieldKeyholeLine,
-					allowed: (admin) => admin.is_super_admin
-				}
-			]
-		},
-		{
-			label: 'Settings',
-			items: [
-				{
-					route: '/admin/(panel)/dashboard/organization',
-					label: 'Organization',
-					icon: RiBuildingLine,
-					demo: true
-				},
-				{
-					route: '/admin/(panel)/dashboard/languages',
-					label: 'Languages',
-					icon: RiTranslate2,
-					demo: true
-				}
-			]
-		}
-	];
-
-	/** The groups as this administrator sees them: what their roles do not
-	    allow is left out, and a group left empty goes with it. */
-	const visible = $derived.by(() => {
-		const admin = page.data.admin as Admin | undefined;
-
-		return groups
-			.map((group) => ({
-				...group,
-				items: group.items.filter((item) => !item.allowed || (admin && item.allowed(admin)))
-			}))
-			.filter((group) => group.items.length > 0);
-	});
-
-	/** Activity is the section's own page, so it only matches exactly; the
+	/** Activity is the dashboard's own page, so it only matches exactly; the
 	    others also match anything below them. */
 	function isCurrent(route: Section): boolean {
 		const href = resolve(route);
@@ -194,41 +29,28 @@
 	}
 </script>
 
-<aside class:mini={collapsed}>
+<aside class:collapsed>
 	<nav aria-label="Sections">
-		{#each visible as group (group.label ?? 'top')}
-			<div class="group">
+		{#each groups as group (group.label ?? 'top')}
+			<div class="group" role="group" aria-label={group.label}>
 				{#if group.label}
 					<h2>{group.label}</h2>
 				{/if}
 
-				{#each group.items as item (item.route)}
-					<!-- Folded, the name is gone from the column, so the tooltip is
-					     the only thing left saying what the icon leads to. Unfolded
-					     it would only repeat the label, so it is switched off. -->
-					<Tooltip
-						label={item.soon ? `${item.label} · coming soon` : item.label}
-						placement="right"
-						disabled={!collapsed}
-					>
-						{#snippet children(trigger)}
-							<a
-								{...trigger()}
-								href={resolve(item.route)}
-								class:current={isCurrent(item.route)}
-								aria-current={isCurrent(item.route) ? 'page' : undefined}
-							>
-								<Icon icon={item.icon} />
-								<span class="label">{item.label}</span>
-								{#if item.soon}
-									<span class="soon">Soon</span>
-								{:else if item.demo}
-									<span class="dot" aria-hidden="true"></span>
-								{/if}
-							</a>
-						{/snippet}
-					</Tooltip>
-				{/each}
+				<ul>
+					{#each group.items as item (item.route)}
+						<li>
+							<SidebarLink
+								route={item.route}
+								label={item.label}
+								icon={item.icon}
+								status={item.status}
+								current={isCurrent(item.route)}
+								{collapsed}
+							/>
+						</li>
+					{/each}
+				</ul>
 			</div>
 		{/each}
 	</nav>
@@ -244,7 +66,9 @@
 					aria-expanded={!collapsed}
 					aria-label={collapsed ? 'Expand the sidebar' : 'Collapse the sidebar'}
 				>
-					<Icon icon={collapsed ? RiSidebarUnfoldLine : RiSidebarFoldLine} />
+					<span class="icon">
+						<Icon icon={collapsed ? RiSidebarUnfoldLine : RiSidebarFoldLine} />
+					</span>
 					<span class="label">Collapse</span>
 				</button>
 			{/snippet}
@@ -259,119 +83,91 @@
 		display: flex;
 		flex-direction: column;
 		justify-content: space-between;
-		gap: var(--space-4);
+		gap: var(--space-3);
 		height: calc(100dvh - var(--header-height));
-		padding: var(--space-3) var(--space-2) var(--space-2);
+		padding: 8px;
 		border-right: 1px solid var(--color-border);
 		background: var(--color-surface);
 		overflow-x: hidden;
 		overflow-y: auto;
+		scrollbar-width: thin;
 	}
 
 	nav {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-3);
 	}
 
-	.group {
+	ul {
 		display: flex;
 		flex-direction: column;
 		gap: 1px;
+		margin: 0;
+		padding: 0;
+		list-style: none;
 	}
 
-	/* Nothing in the column re-wraps while it is folding: the width animates,
-	   and text that no longer fits is clipped rather than reflowing into a
-	   different shape on the way. */
+	/* A group is its heading and its links; the rule between groups only
+	   shows once the headings have folded away, so the column still reads as
+	   groups without their names. */
+	.group + .group {
+		margin-top: 6px;
+		border-top: 1px solid transparent;
+		transition:
+			border-color var(--speed),
+			padding var(--speed);
+	}
+
 	h2 {
-		padding: var(--space-2) var(--space-2) var(--space-1);
-		white-space: nowrap;
+		height: 26px;
+		margin: 0;
+		padding: 0 12px;
+		overflow: hidden;
 		color: var(--color-text-hint);
-		font-size: var(--text-xs);
+		font-size: 11px;
 		font-weight: 600;
+		line-height: 28px;
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
-	}
-
-	a {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-		height: var(--nav-item-height);
-		padding: 0 var(--space-2);
-		border-radius: var(--radius-sm);
-		color: var(--color-text);
-		font-size: var(--text-base);
-		text-decoration: none;
-		transition:
-			background-color var(--speed-fast),
-			color var(--speed-fast);
-	}
-
-	a:hover {
-		background: var(--color-secondary);
-	}
-
-	a.current {
-		background: var(--color-secondary-alt);
-		font-weight: 600;
-	}
-
-	.label {
-		flex: 1;
-		overflow: hidden;
-		text-overflow: ellipsis;
 		white-space: nowrap;
+		transition:
+			height var(--speed),
+			opacity var(--speed);
 	}
 
-	/* A quiet dot rather than a word: it marks the section without competing
-	   with its name. */
-	.dot {
-		flex: none;
-		width: 5px;
-		height: 5px;
-		border-radius: var(--radius-pill);
-		background: var(--color-text-hint);
-		opacity: 0.5;
+	/* Folded: the headings close up and a rule takes their place. */
+	.collapsed .group + .group {
+		padding-top: 6px;
+		border-top-color: var(--color-border);
 	}
 
-	/* Not built yet, which is worth a word rather than a dot. */
-	.soon {
-		display: inline-flex;
-		flex: none;
-		align-items: center;
-		height: 18px;
-		padding: 0 6px;
-		border-radius: var(--radius-sm);
-		background: var(--surface-info);
-		color: color-mix(in srgb, var(--color-info) 80%, var(--color-text));
-		font-size: 10px;
-		font-weight: 600;
-		letter-spacing: 0.03em;
-		text-transform: uppercase;
+	.collapsed h2 {
+		height: 0;
+		opacity: 0;
 	}
 
 	.foot {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-1);
+		padding-top: 8px;
+		border-top: 1px solid var(--color-border);
 	}
 
-	/* The fold button sits where a nav item would, so it reads as part of the
-	   list rather than a control bolted underneath it. */
+	/* The fold button is laid out like a link, so it sits in the column as
+	   one more row rather than a control bolted underneath. */
 	.fold {
 		display: flex;
 		align-items: center;
-		gap: var(--space-2);
-		height: var(--nav-item-height);
-		padding: 0 var(--space-2);
+		gap: 10px;
+		width: 100%;
+		height: 32px;
+		padding: 0 12px;
+		overflow: hidden;
 		border: none;
 		border-radius: var(--radius-sm);
 		background: transparent;
 		color: var(--color-text-hint);
 		font: inherit;
 		font-size: var(--text-base);
-		text-align: left;
+		white-space: nowrap;
 		cursor: pointer;
 		transition:
 			background-color var(--speed-fast),
@@ -383,39 +179,33 @@
 		color: var(--color-text);
 	}
 
-	/* Folded: icons only. Nothing moves sideways while the column narrows —
-	   the icons stay 20px from the edge, under the header's mark — and the
-	   words fade as they run out of room, so the fold is one smooth motion.
-	   The group headings keep their height, which leaves a gap between
-	   groups, and the names come back as tooltips. */
-	h2,
-	.label,
-	.soon,
-	.dot {
+	.fold:focus-visible {
+		outline: 2px solid var(--color-accent);
+		outline-offset: -2px;
+	}
+
+	.fold .icon {
+		display: inline-flex;
+		flex: none;
+		width: 16px;
+		justify-content: center;
+	}
+
+	.fold .label {
 		transition: opacity var(--speed);
 	}
 
-	.mini h2,
-	.mini .label,
-	.mini .soon,
-	.mini .dot {
+	.collapsed .fold .label {
 		opacity: 0;
-	}
-
-	.mini .soon,
-	.mini .dot {
-		visibility: hidden;
 	}
 
 	/* Narrow screens have no room for a column, so the sections become one
 	   scrollable row above the content. */
 	@media (max-width: 55rem) {
 		aside {
-			position: sticky;
-			top: var(--header-height);
 			z-index: 5;
 			height: auto;
-			padding: var(--space-2);
+			padding: 6px var(--space-2);
 			border-right: none;
 			border-bottom: 1px solid var(--color-border);
 			overflow-x: auto;
@@ -423,20 +213,33 @@
 		}
 
 		nav,
-		.group {
+		ul {
 			flex-direction: row;
-			gap: var(--space-1);
+			gap: 2px;
+		}
+
+		.group + .group,
+		.collapsed .group + .group {
+			margin: 0 0 0 2px;
+			padding: 0 0 0 4px;
+			border-top: none;
+			border-left: 1px solid var(--color-border);
 		}
 
 		h2,
-		.fold,
-		.dot,
-		.soon {
+		.foot {
 			display: none;
 		}
 
-		a {
-			white-space: nowrap;
+		/* Folding only means something beside the content, so here every
+		   section keeps its name, and the marks are left to the pages. */
+		aside :global(.label) {
+			opacity: 1 !important;
+		}
+
+		aside :global(.soon),
+		aside :global(.dot) {
+			display: none;
 		}
 	}
 </style>

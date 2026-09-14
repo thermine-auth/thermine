@@ -3,6 +3,7 @@
 	import { resolve } from '$app/paths';
 	import { useQueryClient } from '@tanstack/svelte-query';
 	import { Menu } from '@ark-ui/svelte/menu';
+	import { Portal } from '@ark-ui/svelte/portal';
 	import { RiArrowDownSLine, RiLogoutBoxRLine, RiUserSettingsLine } from 'svelte-remixicon';
 	import { adminApi, type Admin } from '$lib/api';
 	import { Icon, type Size } from '$lib/components/ui';
@@ -59,29 +60,31 @@
 		<Icon icon={RiArrowDownSLine} />
 	</Menu.Trigger>
 
-	<Menu.Positioner>
-		<Menu.Content>
-			<div class="identity">
-				<strong>{admin.full_name}</strong>
-				<span class="hint">{admin.email}</span>
-				{#if admin.roles.length > 0}
-					<span class="roles">{admin.roles.join(', ')}</span>
-				{/if}
-			</div>
+	<Portal>
+		<Menu.Positioner>
+			<Menu.Content>
+				<div class="identity">
+					<strong>{admin.full_name}</strong>
+					<span class="hint">{admin.email}</span>
+					{#if admin.roles.length > 0}
+						<span class="roles">{admin.roles.join(', ')}</span>
+					{/if}
+				</div>
 
-			<Menu.Separator />
+				<Menu.Separator />
 
-			<Menu.Item value="profile">
-				<Icon icon={RiUserSettingsLine} />
-				Profile
-			</Menu.Item>
+				<Menu.Item value="profile">
+					<Icon icon={RiUserSettingsLine} />
+					Profile
+				</Menu.Item>
 
-			<Menu.Item value="sign-out">
-				<Icon icon={RiLogoutBoxRLine} />
-				{signingOut ? 'Signing out…' : 'Sign out'}
-			</Menu.Item>
-		</Menu.Content>
-	</Menu.Positioner>
+				<Menu.Item value="sign-out">
+					<Icon icon={RiLogoutBoxRLine} />
+					{signingOut ? 'Signing out…' : 'Sign out'}
+				</Menu.Item>
+			</Menu.Content>
+		</Menu.Positioner>
+	</Portal>
 </Menu.Root>
 
 <style>

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { Portal } from '@ark-ui/svelte/portal';
 	import { Tooltip } from '@ark-ui/svelte/tooltip';
 
 	type Props = {
@@ -30,7 +31,11 @@
 		{/snippet}
 	</Tooltip.Trigger>
 
-	<Tooltip.Positioner>
-		<Tooltip.Content>{label}</Tooltip.Content>
-	</Tooltip.Positioner>
+	<!-- Portalled to the end of the document, so no sticky column, scrolling
+	     table or positioned heading it is opened from can cover or clip it. -->
+	<Portal>
+		<Tooltip.Positioner>
+			<Tooltip.Content>{label}</Tooltip.Content>
+		</Tooltip.Positioner>
+	</Portal>
 </Tooltip.Root>

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { Dialog } from '@ark-ui/svelte/dialog';
+	import { Portal } from '@ark-ui/svelte/portal';
 	import { RiCloseLine } from 'svelte-remixicon';
 	import IconButton from './IconButton.svelte';
 
@@ -75,16 +76,20 @@
 {/snippet}
 
 <Dialog.Root bind:open lazyMount unmountOnExit initialFocusEl={() => panelEl}>
-	<Dialog.Backdrop />
-	<Dialog.Positioner>
-		<Dialog.Content style={width ? `--drawer-width: ${width}` : undefined}>
-			{#if onsubmit}
-				<form class="layout" {onsubmit} bind:this={panelEl} tabindex="-1">{@render panel()}</form>
-			{:else}
-				<div class="layout" bind:this={panelEl} tabindex="-1">{@render panel()}</div>
-			{/if}
-		</Dialog.Content>
-	</Dialog.Positioner>
+	<Portal>
+		<Dialog.Backdrop />
+		<Dialog.Positioner>
+			<Dialog.Content style={width ? `--drawer-width: ${width}` : undefined}>
+				{#if onsubmit}
+					<form class="layout" {onsubmit} bind:this={panelEl} tabindex="-1">
+						{@render panel()}
+					</form>
+				{:else}
+					<div class="layout" bind:this={panelEl} tabindex="-1">{@render panel()}</div>
+				{/if}
+			</Dialog.Content>
+		</Dialog.Positioner>
+	</Portal>
 </Dialog.Root>
 
 <style>
