@@ -4,7 +4,7 @@ import { COOKIES } from '$lib/constants';
  *
  *  The choice lives in a cookie rather than localStorage so the server can
  *  read it and render the panel already folded, the same reason the theme is
- *  kept in one. dashboard/+layout.server.ts reads this name. */
+ *  kept in one. The panel layout, (panel)/+layout.server.ts, reads this name. */
 export type SidebarState = 'wide' | 'mini';
 
 const ONE_YEAR = 60 * 60 * 24 * 365;

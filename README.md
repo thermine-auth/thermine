@@ -88,12 +88,16 @@ scripts/Dockerfile             the API image, built from the repository root
 
 web/src/lib/api/               the typed client for this API
 web/src/lib/query/             the query cache: its client, its keys, its options
-web/src/lib/components/ui/     the design system: Button, Drawer, DataTable, Tooltip…
+web/src/lib/components/ui/     the design system: Button, Drawer, DataTable, Panel, List, Tag…
 web/src/lib/components/layout/ the panel's frame: header, sidebar, account menu
 web/src/lib/components/users/  the users feature: table, drawers, field inputs
-web/src/lib/components/activity/ the dashboard's counts and its activity list
-web/src/lib/components/profile/  the profile page's sections
-web/src/lib/state/             what the panel remembers: the theme, the sidebar
+web/src/lib/components/roles/  roles, their mappings and pickers
+web/src/lib/components/applications/ applications, their API access, token preview
+web/src/lib/components/apis/   APIs, their scopes and settings
+web/src/lib/components/admins/ administrators and admin roles
+web/src/lib/components/activity/ the dashboard: chart, sign-ins, feed, what the log's actions mean
+web/src/lib/components/profile/  the account: its sessions and signing out
+web/src/lib/state/             what the panel remembers: the theme, the sidebar's width
 web/src/lib/utils/             how values are shown
 web/src/lib/data/demo.ts       placeholder rows for the sections with no backend
 web/src/lib/server/api.ts      calling the API from a server load, with the session
@@ -227,22 +231,25 @@ Then open http://localhost:5173/admin/login. A panel with no administrator
 sends you to `/admin/new-super-admin` to make the first one; after that,
 signing in leads to `/admin/dashboard`.
 
-The header carries the two top-level areas — Dashboard and Logs — with the
-account menu on the right, which is where Profile and Sign out live. The
-dashboard has its own sidebar:
+The header holds the logo, the theme toggle and the account menu, which is
+where Profile and Sign out live. Where to go is the dashboard's sidebar, whose
+column the header's logo block tops: the two are one width and fold together.
 
 ```
-Activity                      metrics and recent events   (real)
-Applications  Applications · APIs · SSO integrations
-Authentication  Database · Social · Login flows
+Activity · Logs
+Applications     Applications · APIs · SSO integrations (soon)
+Authentication   Database · Social · Login flows
 User management  Users · Roles
-Settings  Organization · Languages
+Administration   Administrators · Admin roles   (super admins only)
+Settings         Organization · Languages
 ```
 
-Activity and Users are real; everything else renders the placeholder rows in
-`lib/demo.ts`, marked with a dot in the sidebar and a badge on the page, so
-nothing there is mistaken for real state. Delete a block from that file as
-soon as its section talks to the API.
+Each link is shown only to an administrator whose roles allow the page. The
+logs live at `/admin/dashboard/logs`; the old `/admin/logs` redirects there.
+SSO integrations is marked "Soon" and its page says what is planned. Database,
+Social, Login flows, Organization and Languages still render placeholder rows
+from `lib/data/demo.ts`, marked with a dot in the sidebar and a badge on the
+page. Delete a block from that file as soon as its section talks to the API.
 
 ### Users and their fields
 
@@ -275,9 +282,10 @@ Searching matches the email or any stored value, because `data` is searched as
 text; the search and the verified filter live in the URL, so the server renders
 the result and a filtered list can be linked to.
 
-The profile page collects what belongs to the signed-in account: profile
-information, two-factor, theme, language, email, password and sessions. Theme
-and sign out work; the rest are marked "not wired up" and their controls are
+The profile page collects what belongs to the signed-in account, in a
+centred column: profile information, sign-in and security (email, password,
+two-factor), preferences (theme, language) and sessions. Theme and sign out
+work; the rest are marked as not available yet and their controls are
 disabled rather than pretending.
 
 `web/.env` names the API in `PUBLIC_API_URL`, used both by the server when it
@@ -300,16 +308,18 @@ its own.
 Signing in and out still happen in the browser, followed by `invalidateAll()`
 so the server loads run again with the new session.
 
-**Components.** `lib/components/ui` holds the building blocks and
-`lib/components/admin` the pieces only this panel uses. Pages compose those
-and never reach for an Ark UI primitive directly, so a change to how a field
-looks happens in one file.
+**Components.** `lib/components/ui` holds the building blocks — controls,
+fields, and the page pieces `PageContainer`, `PageHeader`, `Panel`,
+`StatCard`, `List`, `ListItem`, `Thumb`, `Tag` and `Alert`, described in its
+README — and each feature folder the pieces only that feature uses. Pages
+compose those and never reach for an Ark UI primitive directly, so a change to
+how a field looks happens in one file.
 
-**Layout.** Pages fill the width, the way PocketBase does: a table with room
-for its columns reads better than one centred in a narrow column. Below 55rem
-the sidebar becomes a scrollable row above the content, and below 30rem the
-header sections become their icons alone — their labels stay in the accessible
-name.
+**Layout.** Pages with tables fill the width, the way PocketBase does: a table
+with room for its columns reads better than one centred in a narrow column.
+Pages read top to bottom, such as the profile, sit in `PageContainer`'s centred
+column instead. Below 55rem the sidebar becomes a scrollable row above the
+content.
 
 **Styling.** [Ark UI](https://ark-ui.com) ships no CSS: every part it renders
 carries `data-scope` and `data-part`, and `lib/styles/ark.css` styles those

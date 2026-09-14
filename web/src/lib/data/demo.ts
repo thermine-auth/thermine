@@ -8,42 +8,6 @@
 
 type Status = 'active' | 'disabled' | 'draft';
 
-export type DemoSso = {
-	id: string;
-	name: string;
-	protocol: string;
-	domain: string;
-	users: number;
-	status: Status;
-};
-
-export const demoSso: DemoSso[] = [
-	{
-		id: 'sso1',
-		name: 'Acme Corp',
-		protocol: 'SAML 2.0',
-		domain: 'acme.com',
-		users: 2140,
-		status: 'active'
-	},
-	{
-		id: 'sso2',
-		name: 'Globex',
-		protocol: 'OIDC',
-		domain: 'globex.io',
-		users: 618,
-		status: 'active'
-	},
-	{
-		id: 'sso3',
-		name: 'Initech',
-		protocol: 'SAML 2.0',
-		domain: 'initech.co',
-		users: 0,
-		status: 'draft'
-	}
-];
-
 export type DemoConnection = {
 	id: string;
 	name: string;

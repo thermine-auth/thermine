@@ -41,6 +41,7 @@ export type {
 	GrantType,
 	Scope,
 	ActivityEvent,
+	ActivityTarget,
 	FieldInput,
 	FieldRules,
 	FieldType,

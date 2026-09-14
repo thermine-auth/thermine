@@ -9,6 +9,7 @@
 		RiBuildingLine,
 		RiCodeBoxLine,
 		RiDatabase2Line,
+		RiFileList3Line,
 		RiGitBranchLine,
 		RiGroupLine,
 		RiLinksLine,
@@ -41,6 +42,8 @@
 		icon: ComponentType;
 		/** Marks a section that is still placeholder data. */
 		demo?: boolean;
+		/** Marks a section that is not built yet. */
+		soon?: boolean;
 		/** Whether the signed-in administrator may open it. Left out, anyone
 		    may. */
 		allowed?: (admin: Admin) => boolean;
@@ -56,6 +59,12 @@
 					route: '/admin/(panel)/dashboard',
 					label: 'Activity',
 					icon: RiPulseLine,
+					allowed: (admin) => can(admin, 'activity.read')
+				},
+				{
+					route: '/admin/(panel)/dashboard/logs',
+					label: 'Logs',
+					icon: RiFileList3Line,
 					allowed: (admin) => can(admin, 'activity.read')
 				}
 			]
@@ -79,7 +88,7 @@
 					route: '/admin/(panel)/dashboard/sso',
 					label: 'SSO integrations',
 					icon: RiLinksLine,
-					demo: true
+					soon: true
 				}
 			]
 		},
@@ -197,7 +206,11 @@
 					<!-- Folded, the name is gone from the column, so the tooltip is
 					     the only thing left saying what the icon leads to. Unfolded
 					     it would only repeat the label, so it is switched off. -->
-					<Tooltip label={item.label} placement="right" disabled={!collapsed}>
+					<Tooltip
+						label={item.soon ? `${item.label} · coming soon` : item.label}
+						placement="right"
+						disabled={!collapsed}
+					>
 						{#snippet children(trigger)}
 							<a
 								{...trigger()}
@@ -207,7 +220,9 @@
 							>
 								<Icon icon={item.icon} />
 								<span class="label">{item.label}</span>
-								{#if item.demo}
+								{#if item.soon}
+									<span class="soon">Soon</span>
+								{:else if item.demo}
 									<span class="dot" aria-hidden="true"></span>
 								{/if}
 							</a>
@@ -219,11 +234,6 @@
 	</nav>
 
 	<div class="foot">
-		<p class="note">
-			<span class="dot" aria-hidden="true"></span>
-			Sections marked this way show placeholder data.
-		</p>
-
 		<Tooltip label="Expand the sidebar" placement="right" disabled={!collapsed}>
 			{#snippet children(trigger)}
 				<button
@@ -325,15 +335,20 @@
 		opacity: 0.5;
 	}
 
-	.note {
-		display: flex;
+	/* Not built yet, which is worth a word rather than a dot. */
+	.soon {
+		display: inline-flex;
+		flex: none;
 		align-items: center;
-		gap: var(--space-2);
-		width: 13rem;
-		padding: var(--space-2);
-		color: var(--color-text-hint);
-		font-size: var(--text-xs);
-		line-height: 1.4;
+		height: 18px;
+		padding: 0 6px;
+		border-radius: var(--radius-sm);
+		background: var(--surface-info);
+		color: color-mix(in srgb, var(--color-info) 80%, var(--color-text));
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.03em;
+		text-transform: uppercase;
 	}
 
 	.foot {
@@ -368,31 +383,28 @@
 		color: var(--color-text);
 	}
 
-	/* Folded: icons only, centred, with the labels and the footnote gone. The
-	   names come back as tooltips, which is what the title attributes are
-	   for. */
+	/* Folded: icons only. Nothing moves sideways while the column narrows —
+	   the icons stay 20px from the edge, under the header's mark — and the
+	   words fade as they run out of room, so the fold is one smooth motion.
+	   The group headings keep their height, which leaves a gap between
+	   groups, and the names come back as tooltips. */
+	h2,
+	.label,
+	.soon,
+	.dot {
+		transition: opacity var(--speed);
+	}
+
 	.mini h2,
-	.mini .note,
-	.mini .label {
-		display: none;
-	}
-
-	.mini a,
-	.mini .fold {
-		justify-content: center;
-		padding: 0;
-	}
-
-	/* The placeholder mark has no room beside the name any more, so it moves
-	   to the corner of the icon. */
-	.mini a {
-		position: relative;
-	}
-
+	.mini .label,
+	.mini .soon,
 	.mini .dot {
-		position: absolute;
-		top: 5px;
-		right: 14px;
+		opacity: 0;
+	}
+
+	.mini .soon,
+	.mini .dot {
+		visibility: hidden;
 	}
 
 	/* Narrow screens have no room for a column, so the sections become one
@@ -417,9 +429,9 @@
 		}
 
 		h2,
-		.note,
 		.fold,
-		.dot {
+		.dot,
+		.soon {
 			display: none;
 		}
 

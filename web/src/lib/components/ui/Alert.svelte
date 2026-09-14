@@ -1,16 +1,29 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { RiErrorWarningLine } from 'svelte-remixicon';
+	import { RiErrorWarningLine, RiInformationLine, RiCheckboxCircleLine } from 'svelte-remixicon';
+	import type { ColorPalette } from './control';
 	import Icon from './Icon.svelte';
 
-	type Props = { children: Snippet };
+	type Props = {
+		/** `danger`, the default, is an error; the others are notices. */
+		tone?: Exclude<ColorPalette, 'neutral'>;
+		children: Snippet;
+	};
 
-	let { children }: Props = $props();
+	let { tone = 'danger', children }: Props = $props();
+
+	const icons = {
+		danger: RiErrorWarningLine,
+		warning: RiErrorWarningLine,
+		info: RiInformationLine,
+		success: RiCheckboxCircleLine
+	};
 </script>
 
-<!-- role="alert" so a screen reader announces the message when it appears. -->
-<p class="alert" role="alert">
-	<Icon icon={RiErrorWarningLine} size="1.0625rem" />
+<!-- An error is announced as soon as it appears; a notice is just read in its
+     place. -->
+<p class="alert {tone}" role={tone === 'danger' ? 'alert' : 'status'}>
+	<Icon icon={icons[tone]} size="1.0625rem" />
 	<span>{@render children()}</span>
 </p>
 
@@ -19,10 +32,49 @@
 		display: flex;
 		align-items: flex-start;
 		gap: var(--space-2);
+		margin: 0;
 		padding: var(--space-2) var(--space-3);
 		border-radius: var(--radius-md);
+		font-size: var(--text-base);
+		line-height: 1.5;
+	}
+
+	.alert :global(svg) {
+		flex-shrink: 0;
+		margin-top: 2px;
+	}
+
+	.danger {
 		background: var(--surface-danger);
 		color: var(--color-danger);
-		font-size: var(--text-base);
+	}
+
+	/* The notices keep the text colour and let the tint and the icon say what
+	   kind they are: a paragraph in orange is hard to read. */
+	.warning {
+		background: var(--surface-warning);
+		color: var(--color-text);
+	}
+
+	.warning :global(svg) {
+		color: var(--color-warning);
+	}
+
+	.info {
+		background: var(--surface-info);
+		color: var(--color-text);
+	}
+
+	.info :global(svg) {
+		color: var(--color-info);
+	}
+
+	.success {
+		background: var(--surface-success);
+		color: var(--color-text);
+	}
+
+	.success :global(svg) {
+		color: var(--color-success);
 	}
 </style>

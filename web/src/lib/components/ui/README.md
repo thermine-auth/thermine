@@ -100,3 +100,48 @@ block so it lines up with them.
 3. If it is neither, its own `<style>` block is the right place, and it should
    use tokens rather than literal values.
 4. Export it from `index.ts`.
+
+## Page building blocks
+
+The pieces the Activity and Profile pages are made of, after PocketBase's
+settings and logs pages. Reach for these before writing a box of your own.
+
+```svelte
+<PageContainer>
+	<!-- a centred column: sm, md (default), lg -->
+	<PageHeader crumbs={['Account', 'Profile']}>
+		<!-- breadcrumbs; the last is the h1 -->
+		{#snippet secondary()}<IconButton icon={RiRefreshLine} label="Refresh" />{/snippet}
+		{#snippet actions()}<Button>Save</Button>{/snippet}
+	</PageHeader>
+
+	<StatCard label="Users" value={42} icon={RiGroupLine} href={usersPage}>
+		<Tag small>40 active</Tag>
+	</StatCard>
+
+	<Panel title="Sessions" icon={RiComputerLine} flush>
+		{#snippet meta()}<Tag tone="success" dot>2 active</Tag>{/snippet}
+
+		<List>
+			<ListItem title="Chrome on macOS" description="127.0.0.1">
+				{#snippet lead()}<Thumb icon={RiComputerLine} />{/snippet}
+				{#snippet end()}<Tag tone="success" dot strong>Active</Tag>{/snippet}
+			</ListItem>
+		</List>
+	</Panel>
+
+	<Alert tone="warning">One administrator is locked out.</Alert>
+</PageContainer>
+```
+
+| Component       | What it is                                                                                          |
+| --------------- | --------------------------------------------------------------------------------------------------- |
+| `PageContainer` | A centred column for a page read top to bottom.                                                     |
+| `PageHeader`    | Breadcrumbs, controls beside them, and the page's actions at the far end.                           |
+| `Panel`         | A titled block: header strip with an icon and `meta`, then content. `flush` for lists.              |
+| `StatCard`      | A number with its name, an icon, tags under it, and a link when `href` is given.                    |
+| `List`          | Rows ruled off one under another. `bordered` makes it a box of its own.                             |
+| `ListItem`      | A row: `lead` (usually a `Thumb`), a title and description or any content, and `end`.               |
+| `Thumb`         | A small square holding an icon or a few letters.                                                    |
+| `Tag`           | A label in any palette; `dot` marks it with a coloured dot instead, `small` and `strong` size it.   |
+| `Alert`         | A message: `danger` (the default) is announced as an error; `warning`, `info`, `success` are notes. |

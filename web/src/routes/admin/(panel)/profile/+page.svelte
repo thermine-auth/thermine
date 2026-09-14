@@ -1,220 +1,219 @@
 <script lang="ts">
 	import {
+		RiComputerLine,
 		RiGlobalLine,
 		RiLockPasswordLine,
-		RiLogoutBoxRLine,
 		RiMailLine,
 		RiPaletteLine,
 		RiShieldCheckLine,
+		RiShieldKeyholeLine,
 		RiUserSettingsLine
 	} from 'svelte-remixicon';
-	import SessionTable from '$lib/components/profile/SessionTable.svelte';
-	import ProfileSection from '$lib/components/profile/ProfileSection.svelte';
+	import SessionList from '$lib/components/profile/SessionList.svelte';
 	import SignOutButton from '$lib/components/profile/SignOutButton.svelte';
-	import { Badge, Button, Card } from '$lib/components/ui';
-	import { formatDateTime } from '$lib/utils/format';
+	import {
+		Button,
+		List,
+		ListItem,
+		PageContainer,
+		PageHeader,
+		Panel,
+		Tag,
+		Thumb
+	} from '$lib/components/ui';
 	import { theme } from '$lib/state/theme.svelte';
+	import { formatDateTime, formatRelative } from '$lib/utils/format';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 
-	const details = $derived([
-		{ label: 'Username', value: data.admin.username },
-		{ label: 'Name', value: data.admin.full_name },
-		{ label: 'Roles', value: data.admin.roles.join(', ') },
-		{
-			label: 'Last signed in',
-			value: data.admin.last_login_at ? formatDateTime(data.admin.last_login_at) : 'Never'
-		}
-	]);
+	const admin = $derived(data.admin);
+
+	/** Two letters for the account's thumb. */
+	const initials = $derived(
+		admin.full_name
+			.split(/\s+/)
+			.filter(Boolean)
+			.slice(0, 2)
+			.map((part) => part[0])
+			.join('')
+			.toUpperCase() || admin.email.slice(0, 2).toUpperCase()
+	);
+
+	const activeSessions = $derived(data.sessions.filter((session) => session.active).length);
 </script>
 
 <svelte:head><title>Profile · xermess admin</title></svelte:head>
 
-<header>
-	<h1>Profile</h1>
-	<p class="subtitle">Your account, how you sign in, and how this panel looks to you.</p>
-</header>
+<PageContainer>
+	<div class="page">
+		<PageHeader crumbs={['Account', 'Profile']}>
+			{#snippet actions()}
+				<SignOutButton />
+			{/snippet}
+		</PageHeader>
 
-<ProfileSection
-	icon={RiUserSettingsLine}
-	title="Profile information"
-	description="Who you are in this organisation."
->
-	<Card>
-		<dl>
-			{#each details as detail (detail.label)}
-				<div class="row">
-					<dt>{detail.label}</dt>
-					<dd>{detail.value}</dd>
-				</div>
-			{/each}
-			<div class="row">
-				<dt>Status</dt>
-				<dd>
-					<Badge tone={data.admin.status === 'active' ? 'success' : 'neutral'}>
-						{data.admin.status}
-					</Badge>
-				</dd>
-			</div>
-		</dl>
-	</Card>
-</ProfileSection>
+		<!-- Who is signed in, at a glance. -->
+		<List bordered label="Account">
+			<ListItem title={admin.full_name} description={admin.email}>
+				{#snippet lead()}<Thumb text={initials} size="md" />{/snippet}
+				{#snippet end()}
+					<Tag tone={admin.status === 'active' ? 'success' : 'neutral'} dot strong>
+						{admin.status}
+					</Tag>
+					{#if admin.is_super_admin}
+						<Tag tone="info">super admin</Tag>
+					{/if}
+				{/snippet}
+			</ListItem>
+		</List>
 
-<ProfileSection
-	icon={RiShieldCheckLine}
-	title="Two-factor authentication"
-	description="A second step when you sign in."
-	demo
->
-	<Card padded>
-		<div class="setting">
-			<div>
-				<strong>Not set up</strong>
-				<p class="hint">An authenticator app or a security key can be added here.</p>
-			</div>
-			<Button variant="subtle" disabled>Set up</Button>
-		</div>
-	</Card>
-</ProfileSection>
+		<Panel title="Profile information" icon={RiUserSettingsLine} flush>
+			<List label="Profile information">
+				<ListItem>
+					<span class="detail"><span>Username</span><b>{admin.username}</b></span>
+				</ListItem>
+				<ListItem>
+					<span class="detail"><span>Name</span><b>{admin.full_name}</b></span>
+				</ListItem>
+				<ListItem>
+					<span class="detail">
+						<span>Roles</span>
+						<span class="tags">
+							{#each admin.roles as role (role)}
+								<Tag small>{role}</Tag>
+							{:else}
+								<b>—</b>
+							{/each}
+						</span>
+					</span>
+				</ListItem>
+				<ListItem>
+					<span class="detail">
+						<span>Last signed in</span>
+						{#if admin.last_login_at}
+							<b title={formatDateTime(admin.last_login_at)}>
+								{formatDateTime(admin.last_login_at)}
+								<small>· {formatRelative(admin.last_login_at)}</small>
+							</b>
+						{:else}
+							<b>Never</b>
+						{/if}
+					</span>
+				</ListItem>
+			</List>
+		</Panel>
 
-<ProfileSection
-	icon={RiPaletteLine}
-	title="Theme"
-	description="Light or dark, remembered on this device."
->
-	<Card padded>
-		<div class="choices" role="group" aria-label="Theme">
-			{#each ['light', 'dark'] as const as option (option)}
-				<button
-					type="button"
-					class="control choice"
-					data-size="md"
-					data-variant="outline"
-					data-palette="neutral"
-					class:selected={theme.current === option}
-					aria-pressed={theme.current === option}
-					onclick={() => theme.set(option)}
+		<Panel title="Sign-in & security" icon={RiShieldKeyholeLine} flush>
+			{#snippet meta()}<Tag small>Not available yet</Tag>{/snippet}
+			<List label="Sign-in and security">
+				<ListItem
+					title="Email"
+					description="{admin.email} · changing it asks for confirmation at the new address."
 				>
-					<span class="swatch {option}"></span>
-					{option === 'light' ? 'Light' : 'Dark'}
-				</button>
-			{/each}
-		</div>
-	</Card>
-</ProfileSection>
+					{#snippet lead()}<Thumb icon={RiMailLine} />{/snippet}
+					{#snippet end()}<Button size="sm" variant="subtle" disabled>Change</Button>{/snippet}
+				</ListItem>
+				<ListItem title="Password" description="Set · changing it signs out every other session.">
+					{#snippet lead()}<Thumb icon={RiLockPasswordLine} />{/snippet}
+					{#snippet end()}<Button size="sm" variant="subtle" disabled>Change</Button>{/snippet}
+				</ListItem>
+				<ListItem
+					title="Two-factor authentication"
+					description="Not set up · an authenticator app or a security key, as a second step."
+				>
+					{#snippet lead()}<Thumb icon={RiShieldCheckLine} />{/snippet}
+					{#snippet end()}<Button size="sm" variant="subtle" disabled>Set up</Button>{/snippet}
+				</ListItem>
+			</List>
+		</Panel>
 
-<ProfileSection
-	icon={RiGlobalLine}
-	title="Language"
-	description="What this panel is shown in."
-	demo
->
-	<Card padded>
-		<div class="setting">
-			<div>
-				<strong>English</strong>
-				<p class="hint">Kyrgyz and Russian are translated but not offered here yet.</p>
-			</div>
-			<Button variant="subtle" disabled>Change</Button>
-		</div>
-	</Card>
-</ProfileSection>
+		<Panel title="Preferences" icon={RiPaletteLine} flush>
+			<List label="Preferences">
+				<ListItem title="Theme" description="Light or dark, remembered on this device.">
+					{#snippet lead()}<Thumb icon={RiPaletteLine} />{/snippet}
+					{#snippet end()}
+						<span class="choices" role="group" aria-label="Theme">
+							{#each ['light', 'dark'] as const as option (option)}
+								<button
+									type="button"
+									class="control choice"
+									data-size="sm"
+									data-variant="outline"
+									data-palette="neutral"
+									class:selected={theme.current === option}
+									aria-pressed={theme.current === option}
+									onclick={() => theme.set(option)}
+								>
+									<span class="swatch {option}"></span>
+									{option === 'light' ? 'Light' : 'Dark'}
+								</button>
+							{/each}
+						</span>
+					{/snippet}
+				</ListItem>
+				<ListItem
+					title="Language"
+					description="English · Kyrgyz and Russian are translated but not offered here yet."
+				>
+					{#snippet lead()}<Thumb icon={RiGlobalLine} />{/snippet}
+					{#snippet end()}
+						<Tag small>Soon</Tag>
+						<Button size="sm" variant="subtle" disabled>Change</Button>
+					{/snippet}
+				</ListItem>
+			</List>
+		</Panel>
 
-<ProfileSection icon={RiMailLine} title="Email" description="Where account notices are sent." demo>
-	<Card padded>
-		<div class="setting">
-			<div>
-				<strong>{data.admin.email}</strong>
-				<p class="hint">Changing this will ask for confirmation at the new address.</p>
-			</div>
-			<Button variant="subtle" disabled>Change</Button>
-		</div>
-	</Card>
-</ProfileSection>
-
-<ProfileSection
-	icon={RiLockPasswordLine}
-	title="Password"
-	description="Used with your username to sign in."
-	demo
->
-	<Card padded>
-		<div class="setting">
-			<div>
-				<strong>Set</strong>
-				<p class="hint">Changing it signs out every other session.</p>
-			</div>
-			<Button variant="subtle" disabled>Change</Button>
-		</div>
-	</Card>
-</ProfileSection>
-
-<ProfileSection
-	icon={RiLogoutBoxRLine}
-	title="Sessions"
-	description="Where this account is signed in."
->
-	<SessionTable sessions={data.sessions} />
-
-	<div class="sign-out">
-		<SignOutButton />
+		<Panel title="Sessions" icon={RiComputerLine} flush>
+			{#snippet meta()}
+				<Tag tone={activeSessions > 0 ? 'success' : 'neutral'} dot>
+					{activeSessions} active
+				</Tag>
+			{/snippet}
+			<SessionList sessions={data.sessions} />
+		</Panel>
 	</div>
-</ProfileSection>
+</PageContainer>
 
 <style>
-	header {
-		margin-bottom: var(--space-5);
-		padding-inline: var(--page-gutter);
-	}
-
-	.subtitle {
-		margin-top: var(--space-1);
-		color: var(--color-text-hint);
-		font-size: var(--text-base);
-	}
-
-	dl {
-		margin: 0;
-	}
-
-	.row {
-		display: grid;
-		grid-template-columns: 10rem 1fr;
-		gap: var(--space-4);
-		align-items: center;
-		padding: var(--space-3) var(--space-4);
-		font-size: var(--text-base);
-	}
-
-	.row + .row {
-		border-top: 1px solid var(--color-border);
-	}
-
-	dt {
-		color: var(--color-text-hint);
-	}
-
-	dd {
-		margin: 0;
-	}
-
-	.setting {
+	.page {
 		display: flex;
-		align-items: center;
-		justify-content: space-between;
+		flex-direction: column;
 		gap: var(--space-4);
 	}
 
-	.hint {
-		margin-top: 2px;
+	/* One fact about the account: its name in the hint colour on the left,
+	   the value beside it. */
+	.detail {
+		display: grid;
+		grid-template-columns: 10rem minmax(0, 1fr);
+		align-items: center;
+		gap: var(--space-3);
 		color: var(--color-text-hint);
 		font-size: var(--text-sm);
 	}
 
+	.detail b {
+		color: var(--color-text);
+		font-size: var(--text-base);
+		font-weight: normal;
+	}
+
+	.detail small {
+		color: var(--color-text-hint);
+		font-size: var(--text-sm);
+	}
+
+	.tags {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 5px;
+	}
+
 	.choices {
 		display: flex;
-		gap: var(--space-2);
+		gap: 5px;
 	}
 
 	/* The shape is the shared control; being the chosen one is this page's
@@ -224,10 +223,10 @@
 	}
 
 	.swatch {
-		width: 16px;
-		height: 16px;
+		width: 14px;
+		height: 14px;
 		border: 1px solid var(--color-border);
-		border-radius: var(--radius-sm);
+		border-radius: 4px;
 	}
 
 	.swatch.light {
@@ -238,19 +237,10 @@
 		background: #1c1c1c;
 	}
 
-	.sign-out {
-		margin-top: var(--space-3);
-	}
-
-	@media (max-width: 40rem) {
-		.row {
+	@media (max-width: 34rem) {
+		.detail {
 			grid-template-columns: 1fr;
-			gap: var(--space-1);
-		}
-
-		.setting {
-			flex-direction: column;
-			align-items: flex-start;
+			gap: 2px;
 		}
 	}
 </style>

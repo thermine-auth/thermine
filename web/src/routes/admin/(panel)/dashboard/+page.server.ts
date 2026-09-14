@@ -13,10 +13,21 @@ export const load: PageServerLoad = async ({ cookies, fetch, parent }) => {
 
 	const [overview, sessions] = await Promise.all([
 		can(admin, 'activity.read')
-			? apiGet<Overview>('/admin/overview', cookies, fetch)
+			? apiGet<Overview>('/admin/overview', cookies, fetch).then(withLists)
 			: Promise.resolve(null),
-		apiGet<{ sessions: AdminSession[] }>('/admin/sessions', cookies, fetch)
+		apiGet<{ sessions: AdminSession[] | null }>('/admin/sessions', cookies, fetch)
 	]);
 
-	return { overview, sessions: sessions.sessions };
+	return { overview, sessions: sessions.sessions ?? [] };
 };
+
+/** The overview with every list a list: an API from before these fields
+    existed, or one that says null for an empty list, still renders. */
+function withLists(overview: Overview): Overview {
+	return {
+		...overview,
+		daily: overview.daily ?? [],
+		top_actors: overview.top_actors ?? [],
+		activity: overview.activity ?? []
+	};
+}

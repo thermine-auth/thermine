@@ -1,11 +1,18 @@
 <script lang="ts">
+	import { untrack, type Snippet } from 'svelte';
 	import AppHeader from '$lib/components/layout/AppHeader.svelte';
+	import { provideShell } from '$lib/state/shell.svelte';
 	import type { LayoutData } from './$types';
 
-	let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
+	let { data, children }: { data: LayoutData; children: Snippet } = $props();
+
+	/** Starts as the server rendered it and is the reader's from then on, so
+	    the value is read once on purpose: a later load returns the same
+	    cookie, and re-reading it would undo a toggle. */
+	const shell = provideShell(untrack(() => data.sidebar));
 </script>
 
-<div class="shell">
+<div class="shell" class:mini={shell.collapsed}>
 	<AppHeader admin={data.admin} />
 
 	<main>
@@ -14,8 +21,31 @@
 </div>
 
 <style>
+	/* The column's width is one registered property, animated here, so the
+	   header's logo block and the sidebar under it are the same number on
+	   every frame of the fold rather than two animations kept in step. */
+	@property --sidebar-width {
+		syntax: '<length>';
+		inherits: true;
+		initial-value: 240px;
+	}
+
 	.shell {
+		--sidebar-width: 240px;
+
 		min-height: 100dvh;
+		transition: --sidebar-width var(--speed-drawer) cubic-bezier(0.4, 0, 0.2, 1);
+	}
+
+	/* Folded, the column is just wide enough for the icons. */
+	.shell.mini {
+		--sidebar-width: 56px;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.shell {
+			transition: none;
+		}
 	}
 
 	/* Pages fill the width, the way PocketBase does: a table is easier to

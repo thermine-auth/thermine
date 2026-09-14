@@ -496,3 +496,127 @@ func randomHex(t *testing.T, n int) string {
 
 	return hex.EncodeToString(b)
 }
+
+type overviewBody struct {
+	Counts  map[string]int64 `json:"counts"`
+	SignIns struct {
+		Succeeded int64 `json:"succeeded"`
+		Failed    int64 `json:"failed"`
+	} `json:"sign_ins"`
+	Daily []struct {
+		Day      string `json:"day"`
+		Events   int64  `json:"events"`
+		Failures int64  `json:"failures"`
+	} `json:"daily"`
+	TopActors []struct {
+		Actor  string `json:"actor"`
+		Events int64  `json:"events"`
+	} `json:"top_actors"`
+	Activity []struct {
+		Action string `json:"action"`
+		Detail string `json:"detail"`
+		Target *struct {
+			Type string `json:"type"`
+			Name string `json:"name"`
+		} `json:"target"`
+	} `json:"activity"`
+}
+
+func TestLiveOverview(t *testing.T) {
+	s := newLiveServer(t)
+	super := s.superAdmin()
+
+	shop := super.application("shop")
+	super.role("viewer", shop)
+	s.client().login(superEmail, "wrong-password")
+
+	var got overviewBody
+	super.must(http.StatusOK, http.MethodGet, "/overview", nil, &got)
+
+	if got.Counts["applications"] != 1 || got.Counts["enabled_applications"] != 1 || got.Counts["user_roles"] != 1 || got.Counts["admins"] != 1 {
+		t.Errorf("counts = %v", got.Counts)
+	}
+	if got.Counts["active_sessions"] != 1 {
+		t.Errorf("active_sessions = %d, want the super admin's one", got.Counts["active_sessions"])
+	}
+
+	if got.SignIns.Succeeded != 1 || got.SignIns.Failed != 1 {
+		t.Errorf("sign-ins = %+v, want one of each", got.SignIns)
+	}
+
+	if len(got.Daily) != 14 {
+		t.Fatalf("daily = %d days, want 14", len(got.Daily))
+	}
+	if today := got.Daily[13]; today.Events < 4 || today.Failures != 1 {
+		t.Errorf("today = %+v, want every entry so far and the one failure", today)
+	}
+
+	if len(got.TopActors) != 1 || got.TopActors[0].Actor != superEmail || got.TopActors[0].Events != 2 {
+		t.Errorf("top actors = %+v, want the super admin with two changes and no sign-ins", got.TopActors)
+	}
+
+	named := map[string]string{}
+	for _, event := range got.Activity {
+		if event.Target != nil {
+			named[event.Action] = event.Target.Name
+		}
+		if event.Action == "admin.login_failed" && event.Detail != "wrong password" {
+			t.Errorf("failed sign-in detail = %q, want the reason", event.Detail)
+		}
+	}
+	if named["application.created"] != "shop" || named["user_role.created"] != "viewer" {
+		t.Errorf("targets named = %v, want the application and the role", named)
+	}
+}
+
+// An administrator who may read the log but not a kind of record sees that
+// something happened to it, without what it is called.
+func TestLiveActivityHidesNamesAdministratorsCannotSee(t *testing.T) {
+	s := newLiveServer(t)
+	super := s.superAdmin()
+
+	super.application("shop")
+
+	const email, password = "auditor@example.com", "auditor-password-1"
+	var created struct {
+		Role idOnly `json:"role"`
+	}
+	super.must(http.StatusCreated, http.MethodPost, "/admin-roles", map[string]any{
+		"name": "log_reader", "permissions": []string{"activity.read"},
+	}, &created)
+	super.must(http.StatusCreated, http.MethodPost, "/admins", map[string]any{
+		"email": email, "first_name": "Log", "status": "active",
+		"password": password, "confirm_password": password,
+		"assignments": []map[string]any{{"role_id": created.Role.ID}},
+	}, nil)
+
+	reader := s.client()
+	if status := reader.login(email, password); status != http.StatusOK {
+		t.Fatalf("login = %d", status)
+	}
+
+	var got overviewBody
+	reader.must(http.StatusOK, http.MethodGet, "/overview", nil, &got)
+
+	for _, event := range got.Activity {
+		if event.Target != nil && event.Target.Name != "" {
+			t.Errorf("%s: target named %q, want no name for this administrator", event.Action, event.Target.Name)
+		}
+	}
+}
+
+// A panel with nothing done this week still answers with lists, not null,
+// which the dashboard counts the length of.
+func TestLiveOverviewListsAreNeverNull(t *testing.T) {
+	s := newLiveServer(t)
+	super := s.superAdmin()
+
+	var raw map[string]json.RawMessage
+	super.must(http.StatusOK, http.MethodGet, "/overview", nil, &raw)
+
+	for _, key := range []string{"daily", "top_actors", "activity"} {
+		if value := string(raw[key]); value == "null" || value == "" || value[0] != '[' {
+			t.Errorf("%s = %s, want a list", key, value)
+		}
+	}
+}

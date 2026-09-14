@@ -28,6 +28,10 @@ export { default as Alert } from './Alert.svelte';
 export { default as Badge } from './Badge.svelte';
 export { default as Card } from './Card.svelte';
 export { default as Drawer } from './Drawer.svelte';
+export { default as Panel } from './Panel.svelte';
+export { default as StatCard } from './StatCard.svelte';
+export { default as Tag } from './Tag.svelte';
+export { default as Thumb } from './Thumb.svelte';
 export { default as FormSection } from './FormSection.svelte';
 export { default as SelectionBar } from './SelectionBar.svelte';
 export { default as Tabs } from './Tabs.svelte';
@@ -35,7 +39,11 @@ export { default as Tooltip } from './Tooltip.svelte';
 
 // Data and page furniture
 export { default as DataTable } from './DataTable.svelte';
+export { default as List } from './List.svelte';
+export { default as ListItem } from './ListItem.svelte';
 export type { Column } from './table';
 export { default as Icon } from './Icon.svelte';
+export { default as PageContainer } from './PageContainer.svelte';
+export { default as PageHeader } from './PageHeader.svelte';
 export { default as PageHeading } from './PageHeading.svelte';
 export { default as ThemeToggle } from './ThemeToggle.svelte';

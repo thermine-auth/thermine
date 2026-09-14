@@ -1,86 +1,97 @@
 <script lang="ts">
-	import type { ComponentType } from 'svelte';
-	import {
-		RiErrorWarningLine,
-		RiLockLine,
-		RiLoginBoxLine,
-		RiLogoutBoxRLine,
-		RiPulseLine
-	} from 'svelte-remixicon';
-	import type { ActivityEvent } from '$lib/api';
-	import { DataTable, Icon, type Column } from '$lib/components/ui';
-	import { formatDateTime } from '$lib/utils/format';
+	import { RiFileList3Line, RiMapPinLine, RiPulseLine, RiTimeLine } from 'svelte-remixicon';
+	import type { LogEntry } from '$lib/api';
+	import { DataTable, Tag, type Column } from '$lib/components/ui';
+	import { describeUserAgent, formatDateTime, formatRelative } from '$lib/utils/format';
+	import { describe } from './actions';
 
-	type Props = { events: ActivityEvent[] };
-
-	let { events }: Props = $props();
-
-	/** The icon for an action, matching the names the server records in
-	    audit_logs. Anything unrecognised gets the neutral one. */
-	const icons: Record<string, ComponentType> = {
-		'admin.login': RiLoginBoxLine,
-		'admin.logout': RiLogoutBoxRLine,
-		'admin.login_failed': RiErrorWarningLine,
-		'admin.login_blocked': RiLockLine
+	type Props = {
+		events: LogEntry[];
+		empty?: string;
 	};
 
-	function iconFor(action: string): ComponentType {
-		return icons[action] ?? RiPulseLine;
-	}
-
-	/** Failed and blocked sign-ins are the rows worth noticing. */
-	function isFailure(action: string): boolean {
-		return action.endsWith('_failed') || action.endsWith('_blocked');
-	}
+	let { events, empty = 'Nothing has happened yet.' }: Props = $props();
 
 	const columns: Column[] = [
-		{ key: 'action', min: '14rem' },
-		{ key: 'actor' },
-		{ key: 'ip' },
-		{ key: 'when', align: 'end' }
+		{ key: 'event', label: 'Event', icon: RiPulseLine, min: '12rem' },
+		{ key: 'what', label: 'What happened', icon: RiFileList3Line, min: '22rem' },
+		{ key: 'from', label: 'From', icon: RiMapPinLine, min: '11rem' },
+		{ key: 'when', label: 'When', icon: RiTimeLine, min: '8rem', align: 'end' }
 	];
 </script>
 
-<DataTable {columns} rows={events} empty="Nothing has happened yet.">
+<DataTable {columns} rows={events} {empty}>
 	{#snippet row(event)}
-		<td class="action" class:failure={isFailure(event.action)}>
-			<Icon icon={iconFor(event.action)} />
-			{event.action}
+		{@const said = describe(event)}
+		<td>
+			<Tag tone={said.tone} dot strong>{said.label}</Tag>
 		</td>
-		<td class="muted">{event.actor || '—'}</td>
-		<td class="muted mono">{event.ip}</td>
-		<td class="muted when end">{formatDateTime(event.created_at)}</td>
+		<td>
+			<span class="sentence">
+				<b>{said.actor}</b>
+				{said.verb}
+				{#if said.subject}<span class:name={said.named}>{said.subject}</span>{/if}
+				{said.after}
+			</span>
+			{#if said.detail}<span class="detail {said.tone}">{said.detail}</span>{/if}
+		</td>
+		<td>
+			<span class="from">
+				<code>{event.ip || '—'}</code>
+				{#if event.user_agent}
+					<small title={event.user_agent}>{describeUserAgent(event.user_agent)}</small>
+				{/if}
+			</span>
+		</td>
+		<td class="end">
+			<time datetime={event.created_at} title={formatDateTime(event.created_at)}>
+				{formatRelative(event.created_at)}
+			</time>
+		</td>
 	{/snippet}
 </DataTable>
 
 <style>
-	/* A cell is a table cell; the icon beside the action needs a box of its
-	   own to line up with the text. */
-	.action {
-		font-family: var(--font-mono);
+	.sentence {
+		color: var(--color-text-hint);
 		font-size: var(--text-sm);
-		font-weight: 500;
 	}
 
-	.action :global(svg) {
-		vertical-align: -3px;
-		margin-right: var(--space-2);
+	.sentence b,
+	.name {
+		color: var(--color-text);
+		font-weight: 600;
 	}
 
-	.failure {
+	.detail {
+		display: block;
+		margin-top: 2px;
+		color: var(--color-text-hint);
+		font-size: var(--text-xs);
+	}
+
+	.detail.danger {
 		color: var(--color-danger);
 	}
 
-	.muted {
-		color: var(--color-text-hint);
+	.from {
+		display: flex;
+		flex-direction: column;
 	}
 
-	.mono {
+	code {
 		font-family: var(--font-mono);
 		font-size: var(--text-sm);
 	}
 
-	.when {
+	small {
+		color: var(--color-text-hint);
+		font-size: var(--text-xs);
+	}
+
+	time {
+		color: var(--color-text-hint);
 		font-size: var(--text-sm);
+		white-space: nowrap;
 	}
 </style>

@@ -46,7 +46,7 @@
 	   column of buttons. */
 	--nav-item-height: 34px;
 	--header-height: 55px;
-	--sidebar-width: 15rem;
+	--sidebar-width: 240px;
 	/* How far a page's text is inset. Tables run past it to the edges, the
 	   way PocketBase's do, so the rows meet the sidebar with no gap. */
 	--page-gutter: 20px;
@@ -91,8 +91,15 @@
 	--surface-success: color-mix(in srgb, var(--color-success), var(--color-surface) 80%);
 	--surface-danger: color-mix(in srgb, var(--color-danger), var(--color-surface) 80%);
 	--surface-info: color-mix(in srgb, var(--color-info), var(--color-surface) 80%);
+	--surface-warning: color-mix(in srgb, var(--color-warning), var(--color-surface) 80%);
+
+	/* PocketBase's surfaceAlt1: the faintest tint, for the header strip of a
+	   panel and the wash under a hovered row. */
+	--color-surface-alt: #f8f9fa;
 
 	--shadow-sm: 0 2px 5px 0 rgb(0 0 0 / 6%);
+	/* The drop under an open panel, PocketBase's --boxShadow. */
+	--shadow-panel: 0 8px 5px -5px rgb(34 36 36 / 10%);
 	--shadow-md: 0 2px 12px 0 rgb(0 0 0 / 8%);
 	--selection: #465a7340;
 
@@ -140,7 +147,10 @@
 	--color-warning: #cf4e17;
 	--color-info: #4273bd;
 
+	--color-surface-alt: color-mix(in srgb, var(--color-dark-base), white 2%);
+
 	--shadow-sm: 0 2px 5px 0 rgb(0 0 0 / 30%);
+	--shadow-panel: 0 8px 5px -5px rgb(0 0 0 / 30%);
 	--shadow-md: 0 2px 12px 0 rgb(0 0 0 / 40%);
 
 	--scrollbar-thumb: color-mix(in srgb, #ebebeb, transparent 80%);
@@ -181,7 +191,10 @@
 		--color-warning: #cf4e17;
 		--color-info: #4273bd;
 
+		--color-surface-alt: color-mix(in srgb, var(--color-dark-base), white 2%);
+
 		--shadow-sm: 0 2px 5px 0 rgb(0 0 0 / 30%);
+		--shadow-panel: 0 8px 5px -5px rgb(0 0 0 / 30%);
 		--shadow-md: 0 2px 12px 0 rgb(0 0 0 / 40%);
 
 		--scrollbar-thumb: color-mix(in srgb, #ebebeb, transparent 80%);

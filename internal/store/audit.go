@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
+
 	"xermess/internal/model"
 )
 
@@ -21,44 +23,213 @@ func (s *Store) AuditLog(ctx context.Context, limit int) ([]model.AuditLog, erro
 	return events, err
 }
 
-// Counts are the numbers on the dashboard.
+// The actions signing in leaves behind, as internal/auth records them.
+const (
+	actionLogin        = "admin.login"
+	actionLoginFailed  = "admin.login_failed"
+	actionLoginBlocked = "admin.login_blocked"
+)
+
+// Counts are the numbers on the dashboard: how much of everything there is.
 type Counts struct {
-	Admins         int64 `json:"admins"`
-	ActiveSessions int64 `json:"active_sessions"`
-	Applications   int64 `json:"applications"`
-	Roles          int64 `json:"roles"`
-	Events         int64 `json:"events"`
+	Users               int64 `json:"users"`
+	ActiveUsers         int64 `json:"active_users"`
+	NewUsers            int64 `json:"new_users"`
+	Applications        int64 `json:"applications"`
+	EnabledApplications int64 `json:"enabled_applications"`
+	APIs                int64 `json:"apis"`
+	APIScopes           int64 `json:"api_scopes"`
+	UserRoles           int64 `json:"user_roles"`
+	Admins              int64 `json:"admins"`
+	LockedAdmins        int64 `json:"locked_admins"`
+	ActiveSessions      int64 `json:"active_sessions"`
+	Events              int64 `json:"events"`
+	RecentEvents        int64 `json:"recent_events"`
 }
 
-// Counts totals the tables the dashboard reports on. A count that fails takes
-// the whole answer with it: a dashboard of partly wrong numbers is worse than
-// an error.
-func (s *Store) Counts(ctx context.Context, now time.Time) (Counts, error) {
-	db := s.db.WithContext(ctx)
+// Counts totals the tables the dashboard reports on. NewUsers counts the users
+// created since `since`, and RecentEvents the log entries.
+//
+// It is one query, so the numbers are all read at the same moment. A count
+// that fails takes the whole answer with it: a dashboard of partly wrong
+// numbers is worse than an error.
+func (s *Store) Counts(ctx context.Context, now, since time.Time) (Counts, error) {
 	var counts Counts
 
-	if err := db.Model(&model.AdminUser{}).Count(&counts.Admins).Error; err != nil {
-		return counts, err
+	err := s.db.WithContext(ctx).Raw(`
+		SELECT
+			(SELECT COUNT(*) FROM users WHERE deleted_at IS NULL) AS users,
+			(SELECT COUNT(*) FROM users WHERE deleted_at IS NULL AND is_active) AS active_users,
+			(SELECT COUNT(*) FROM users WHERE deleted_at IS NULL AND created_at >= @since) AS new_users,
+			(SELECT COUNT(*) FROM applications WHERE deleted_at IS NULL) AS applications,
+			(SELECT COUNT(*) FROM applications WHERE deleted_at IS NULL AND enabled) AS enabled_applications,
+			(SELECT COUNT(*) FROM apis WHERE deleted_at IS NULL) AS apis,
+			(SELECT COUNT(*) FROM api_scopes WHERE deleted_at IS NULL) AS api_scopes,
+			(SELECT COUNT(*) FROM user_roles WHERE deleted_at IS NULL) AS user_roles,
+			(SELECT COUNT(*) FROM admin_users WHERE deleted_at IS NULL) AS admins,
+			(SELECT COUNT(*) FROM admin_users WHERE deleted_at IS NULL AND locked_until > @now) AS locked_admins,
+			(SELECT COUNT(*) FROM admin_user_sessions
+				WHERE deleted_at IS NULL AND revoked_at IS NULL AND expires_at > @now) AS active_sessions,
+			(SELECT COUNT(*) FROM audit_logs) AS events,
+			(SELECT COUNT(*) FROM audit_logs WHERE created_at >= @since) AS recent_events`,
+		map[string]any{"now": now, "since": since},
+	).Scan(&counts).Error
+
+	return counts, err
+}
+
+// SignIns is how signing in to the panel has gone since a moment.
+type SignIns struct {
+	Since     time.Time `json:"since"`
+	Succeeded int64     `json:"succeeded"`
+	Failed    int64     `json:"failed"`
+	Blocked   int64     `json:"blocked"`
+}
+
+// SignInsSince counts the sign-ins that worked, the wrong passwords, and the
+// attempts on accounts that may not sign in, since `since`.
+func (s *Store) SignInsSince(ctx context.Context, since time.Time) (SignIns, error) {
+	out := SignIns{Since: since}
+
+	err := s.db.WithContext(ctx).Raw(`
+		SELECT
+			COUNT(*) FILTER (WHERE action = @login) AS succeeded,
+			COUNT(*) FILTER (WHERE action = @failed) AS failed,
+			COUNT(*) FILTER (WHERE action = @blocked) AS blocked
+		FROM audit_logs
+		WHERE created_at >= @since AND action IN (@login, @failed, @blocked)`,
+		map[string]any{"since": since, "login": actionLogin, "failed": actionLoginFailed, "blocked": actionLoginBlocked},
+	).Scan(&out).Error
+
+	return out, err
+}
+
+// DayCount is one day of the activity chart.
+type DayCount struct {
+	// Day is the date in the database's time zone, as YYYY-MM-DD.
+	Day    string `json:"day"`
+	Events int64  `json:"events"`
+	// Failures are the sign-ins refused that day, wrong passwords and
+	// blocked accounts together.
+	Failures int64 `json:"failures"`
+}
+
+// DailyActivity counts the log entries of each of the last `days` days, today
+// included, oldest first. A day with nothing logged is there with zeros, so
+// the chart has no gaps.
+func (s *Store) DailyActivity(ctx context.Context, now time.Time, days int) ([]DayCount, error) {
+	// Empty rather than nil, so an answer with nothing in it is a list and
+	// not null.
+	out := []DayCount{}
+
+	err := s.db.WithContext(ctx).Raw(`
+		SELECT
+			to_char(d.day, 'YYYY-MM-DD') AS day,
+			COUNT(a.id) AS events,
+			COUNT(a.id) FILTER (WHERE a.action IN (@failed, @blocked)) AS failures
+		FROM generate_series(
+			date_trunc('day', CAST(@now AS timestamptz)) - make_interval(days => @back),
+			date_trunc('day', CAST(@now AS timestamptz)),
+			interval '1 day'
+		) AS d(day)
+		LEFT JOIN audit_logs a ON a.created_at >= d.day AND a.created_at < d.day + interval '1 day'
+		GROUP BY d.day
+		ORDER BY d.day`,
+		map[string]any{"now": now, "back": days - 1, "failed": actionLoginFailed, "blocked": actionLoginBlocked},
+	).Scan(&out).Error
+
+	return out, err
+}
+
+// ActorCount is how much one administrator did.
+type ActorCount struct {
+	Actor  string `json:"actor"`
+	Events int64  `json:"events"`
+}
+
+// TopActors are the administrators who did the most since `since`, busiest
+// first. Signing in and out is left out: it says someone was there, not that
+// they did anything.
+func (s *Store) TopActors(ctx context.Context, since time.Time, limit int) ([]ActorCount, error) {
+	// Empty rather than nil: a week with no changes is an empty list in the
+	// JSON, which the panel can count, and not null, which it cannot.
+	out := []ActorCount{}
+
+	err := s.db.WithContext(ctx).Raw(`
+		SELECT actor_email AS actor, COUNT(*) AS events
+		FROM audit_logs
+		WHERE created_at >= @since AND actor_email <> '' AND action NOT LIKE 'admin.log%'
+		GROUP BY actor_email
+		ORDER BY events DESC, actor_email
+		LIMIT @limit`,
+		map[string]any{"since": since, "limit": limit},
+	).Scan(&out).Error
+
+	return out, err
+}
+
+// TargetName is what a log entry's target is called now, and the application
+// it belongs to when it belongs to one — which is what deciding whether an
+// administrator may see the name needs.
+type TargetName struct {
+	Name          string
+	ApplicationID *uuid.UUID
+}
+
+// targetTables says where each kind of target the log records is kept, and
+// which column names it. Only these can be looked up, so nothing from the log
+// ever becomes part of a query's text.
+var targetTables = map[string]struct{ table, name, application string }{
+	"user":        {table: "users", name: "email"},
+	"user_field":  {table: "user_fields", name: "name"},
+	"user_role":   {table: "user_roles", name: "name", application: "application_id"},
+	"application": {table: "applications", name: "name", application: "id"},
+	"api":         {table: "apis", name: "name"},
+	"admin_user":  {table: "admin_users", name: "username"},
+	"admin_role":  {table: "roles", name: "name"},
+}
+
+// TargetNames looks up what the targets of one kind are called, by id. A
+// target that no longer exists, an id that is not one, and a kind nothing is
+// kept for are simply missing from the map.
+func (s *Store) TargetNames(ctx context.Context, targetType string, ids []string) (map[string]TargetName, error) {
+	where, ok := targetTables[targetType]
+	names := map[string]TargetName{}
+
+	valid := make([]uuid.UUID, 0, len(ids))
+	for _, id := range ids {
+		if parsed, err := uuid.Parse(id); err == nil {
+			valid = append(valid, parsed)
+		}
 	}
 
-	err := db.Model(&model.AdminUserSession{}).
-		Where("revoked_at IS NULL AND expires_at > ?", now).
-		Count(&counts.ActiveSessions).Error
+	if !ok || len(valid) == 0 {
+		return names, nil
+	}
+
+	application := "NULL::uuid"
+	if where.application != "" {
+		application = where.application
+	}
+
+	var rows []struct {
+		ID            uuid.UUID
+		Name          string
+		ApplicationID *uuid.UUID
+	}
+
+	err := s.db.WithContext(ctx).
+		Table(where.table).
+		Select("id, "+where.name+" AS name, "+application+" AS application_id").
+		Where("id IN ?", valid).
+		Scan(&rows).Error
 	if err != nil {
-		return counts, err
+		return nil, err
 	}
 
-	if err := db.Model(&model.Application{}).Count(&counts.Applications).Error; err != nil {
-		return counts, err
+	for _, row := range rows {
+		names[row.ID.String()] = TargetName{Name: row.Name, ApplicationID: row.ApplicationID}
 	}
 
-	if err := db.Model(&model.Role{}).Count(&counts.Roles).Error; err != nil {
-		return counts, err
-	}
-
-	if err := db.Model(&model.AuditLog{}).Count(&counts.Events).Error; err != nil {
-		return counts, err
-	}
-
-	return counts, nil
+	return names, nil
 }

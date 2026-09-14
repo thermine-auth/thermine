@@ -7,39 +7,38 @@ import (
 	"xermess/internal/store"
 )
 
-// eventResponse is one line of the activity list on the dashboard.
-type eventResponse struct {
-	ID        string    `json:"id"`
-	Action    string    `json:"action"`
-	Actor     string    `json:"actor"`
-	IP        string    `json:"ip"`
-	CreatedAt time.Time `json:"created_at"`
+// targetResponse is what an entry happened to. Name is left out when the
+// record is gone or the administrator may not see what it is called.
+type targetResponse struct {
+	Type string `json:"type"`
+	ID   string `json:"id"`
+	Name string `json:"name,omitempty"`
 }
 
-// logResponse is the same line on the logs page, which has room for more.
+// eventResponse is one entry of the activity list.
+type eventResponse struct {
+	ID        string          `json:"id"`
+	Action    string          `json:"action"`
+	Actor     string          `json:"actor"`
+	IP        string          `json:"ip"`
+	Target    *targetResponse `json:"target"`
+	Detail    string          `json:"detail,omitempty"`
+	CreatedAt time.Time       `json:"created_at"`
+}
+
+// logResponse is the same entry on the logs page, which has room for more.
 type logResponse struct {
 	eventResponse
-	UserAgent  string `json:"user_agent"`
-	TargetType string `json:"target_type"`
+	UserAgent string `json:"user_agent"`
 }
 
-// overviewResponse is the dashboard: what there is, and what just happened.
+// overviewResponse is the dashboard.
 type overviewResponse struct {
-	Counts   store.Counts    `json:"counts"`
-	Activity []eventResponse `json:"activity"`
-}
-
-func newOverviewResponse(counts store.Counts, events []model.AuditLog) overviewResponse {
-	return overviewResponse{Counts: counts, Activity: newEventResponses(events)}
-}
-
-func newEventResponses(events []model.AuditLog) []eventResponse {
-	out := make([]eventResponse, 0, len(events))
-	for _, event := range events {
-		out = append(out, newEventResponse(event))
-	}
-
-	return out
+	Counts    store.Counts       `json:"counts"`
+	SignIns   store.SignIns      `json:"sign_ins"`
+	Daily     []store.DayCount   `json:"daily"`
+	TopActors []store.ActorCount `json:"top_actors"`
+	Activity  []eventResponse    `json:"activity"`
 }
 
 func newEventResponse(event model.AuditLog) eventResponse {
@@ -52,14 +51,10 @@ func newEventResponse(event model.AuditLog) eventResponse {
 	}
 }
 
-func newLogResponses(events []model.AuditLog) []logResponse {
+func newLogResponses(events []model.AuditLog, described []eventResponse) []logResponse {
 	out := make([]logResponse, 0, len(events))
-	for _, event := range events {
-		out = append(out, logResponse{
-			eventResponse: newEventResponse(event),
-			UserAgent:     event.UserAgent,
-			TargetType:    event.TargetType,
-		})
+	for i, event := range events {
+		out = append(out, logResponse{eventResponse: described[i], UserAgent: event.UserAgent})
 	}
 
 	return out

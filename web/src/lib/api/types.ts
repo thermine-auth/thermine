@@ -212,27 +212,56 @@ export type SetupInput = {
 	last_name: string;
 };
 
+/** What a log entry happened to. `name` is missing when the record is gone,
+    or when the administrator's roles do not let them see what it is called. */
+export type ActivityTarget = {
+	type: string;
+	id: string;
+	name?: string;
+};
+
 export type ActivityEvent = {
 	id: string;
 	action: string;
 	actor: string;
 	ip: string;
+	target: ActivityTarget | null;
+	/** What else is worth a line: why a sign-in was refused, which API. */
+	detail?: string;
 	created_at: string;
 };
 
 export type LogEntry = ActivityEvent & {
 	user_agent: string;
-	target_type: string;
 };
 
+/** The dashboard. Counts are totals now; `new_users`, `recent_events`, the
+    sign-ins and the busiest administrators cover the last seven days. */
 export type Overview = {
 	counts: {
-		admins: number;
-		active_sessions: number;
+		users: number;
+		active_users: number;
+		new_users: number;
 		applications: number;
-		roles: number;
+		enabled_applications: number;
+		apis: number;
+		api_scopes: number;
+		user_roles: number;
+		admins: number;
+		locked_admins: number;
+		active_sessions: number;
 		events: number;
+		recent_events: number;
 	};
+	sign_ins: {
+		since: string;
+		succeeded: number;
+		failed: number;
+		blocked: number;
+	};
+	/** One entry a day, oldest first, today last. */
+	daily: { day: string; events: number; failures: number }[];
+	top_actors: { actor: string; events: number }[];
 	activity: ActivityEvent[];
 };
 

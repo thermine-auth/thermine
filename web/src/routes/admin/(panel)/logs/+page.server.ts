@@ -1,11 +1,9 @@
-import type { LogEntry } from '$lib/api';
-import { apiGet, requirePermission } from '$lib/server/api';
+import { redirect } from '@sveltejs/kit';
+import { resolve } from '$app/paths';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ cookies, fetch, parent }) => {
-	requirePermission((await parent()).admin, 'activity.read');
-
-	const { logs } = await apiGet<{ logs: LogEntry[] }>('/admin/logs?limit=100', cookies, fetch);
-
-	return { logs };
+/** The logs moved into the dashboard, beside the activity they detail. An
+    old link or bookmark still lands there. */
+export const load: PageServerLoad = () => {
+	redirect(308, resolve('/admin/(panel)/dashboard/logs'));
 };
