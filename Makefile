@@ -138,6 +138,15 @@ vet: ## Report suspicious code
 test: ## Run tests
 	go test $(PKGS)
 
+# The integration tests connect to the server in TEST_DB_URL only to create
+# and drop databases of their own, so the one in .env does: its data is never
+# touched.
+TEST_DB_URL ?= $(DB_URL)
+
+.PHONY: test-integration
+test-integration: ## Run the tests that need Postgres, on throwaway databases
+	XERMESS_TEST_DB_DSN="$(TEST_DB_URL)" go test -count=1 -run Live ./internal/api/
+
 .PHONY: tidy
 tidy: ## Add missing and remove unused modules
 	go mod tidy

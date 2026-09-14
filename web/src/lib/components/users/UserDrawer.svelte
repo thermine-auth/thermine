@@ -1,9 +1,28 @@
 <script lang="ts">
-	import { createMutation, useQueryClient } from '@tanstack/svelte-query';
-	import { RiKey2Line, RiMailLine } from 'svelte-remixicon';
-	import { ApiError, usersApi, type UserField, type UserRecord } from '$lib/api';
-	import { Alert, Button, Drawer, Input, Switch } from '$lib/components/ui';
+	import { untrack } from 'svelte';
+	import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
+	import { RiMailLine, RiShieldUserLine, RiUserLine } from 'svelte-remixicon';
+	import {
+		ApiError,
+		usersApi,
+		type Admin,
+		type Application,
+		type Role,
+		type UserField,
+		type UserRecord
+	} from '$lib/api';
+	import {
+		Alert,
+		Button,
+		Drawer,
+		FormSection,
+		Input,
+		PasswordInput,
+		SwitchField,
+		Tabs
+	} from '$lib/components/ui';
 	import { keys } from '$lib/query';
+	import RoleMappings from '$lib/components/roles/RoleMappings.svelte';
 	import { additional } from './fields';
 	import FieldInput from './FieldInput.svelte';
 
@@ -11,12 +30,40 @@
 		/** The user being edited, or null to create one. */
 		user: UserRecord | null;
 		fields: UserField[];
+		/** The applications the administrator can see, to name role scopes. */
+		applications: Application[];
+		/** Every role the administrator can see, global and application roles. */
+		roles: Role[];
+		/** The signed-in administrator, whose roles say which roles they may
+		    give. */
+		admin: Admin;
 		open: boolean;
+		/** False for an administrator who may look but not change users. Roles
+		    are allowed separately, by each role's scope. */
+		editable?: boolean;
 	};
 
-	let { user, fields, open = $bindable(false) }: Props = $props();
+	let {
+		user,
+		fields,
+		applications,
+		roles,
+		admin,
+		open = $bindable(false),
+		editable = true
+	}: Props = $props();
 
 	const queryClient = useQueryClient();
+
+	/** The user as last saved here: a new user, once created, carries on as an
+	    edit of what was just made, so its roles can be given straight away. */
+	let current = $state<UserRecord | null>(null);
+
+	/** The tab on show: the record, or its role mapping. */
+	let tab = $state('user');
+
+	/** Said once, after a user is created. */
+	let created = $state(false);
 
 	// The built-in fields are the record's own columns, so they are named
 	// here; the additional ones are whatever this organisation added.
@@ -26,6 +73,12 @@
 	let lastName = $state('');
 	let isActive = $state(true);
 
+	// The password is never sent back, so these start empty every time. On
+	// an edit, leaving them empty keeps the password the user has.
+	let password = $state('');
+	let confirmPassword = $state('');
+	let isTemporaryPassword = $state(false);
+
 	let values = $state<Record<string, string | boolean>>({});
 	let error = $state('');
 
@@ -33,7 +86,31 @@
 	    mutation's own isPending, so a form cannot be left saying "Saving…". */
 	let saving = $state(false);
 
-	const editing = $derived(user !== null);
+	const editing = $derived(current !== null);
+
+	/** How many roles the user holds, for the tab's count. The role mapping
+	    shares this query, so opening the tab asks for nothing more. */
+	const mappings = createQuery(() => ({
+		queryKey: keys.users.mappings(current?.id ?? ''),
+		queryFn: async () => (await usersApi.roleMappings(current!.id)).roles,
+		enabled: open && current !== null
+	}));
+
+	/** Shown once the second box has something in it, not while it is still
+	    being typed into for the first time. */
+	const mismatch = $derived(confirmPassword !== '' && password !== confirmPassword);
+
+	/** A password can only be temporary if there is one. A new user always
+	    gets one, so the switch is only ever off-limits on an edit. */
+	const hasPassword = $derived(!editing || password !== '' || (current?.has_password ?? false));
+
+	const canSubmit = $derived(
+		!saving &&
+			editable &&
+			email.trim() !== '' &&
+			password === confirmPassword &&
+			(editing || password !== '')
+	);
 
 	/** The added fields, split the way they are filled in: values first, then
 	    the yes-or-no answers. */
@@ -44,18 +121,37 @@
 	/** Fill the form whenever the drawer is opened for a different user.
 	    Dates are stored as timestamps and edited as days. */
 	$effect(() => {
-		if (!open) return;
+		// Closing puts the panel back on its first tab, so the next user opens
+		// on their record rather than on whatever tab was left showing.
+		if (!open) {
+			tab = 'user';
+			return;
+		}
 
-		email = user?.email ?? '';
-		emailVerified = user?.email_verified ?? false;
-		firstName = user?.first_name ?? '';
-		lastName = user?.last_name ?? '';
-		isActive = user?.is_active ?? true;
+		current = user;
+		tab = 'user';
+		created = false;
+		// Filled without tracking what the form reads, so the fields being
+		// refilled in the background cannot wipe out what is being typed.
+		untrack(() => fill(user));
+	});
+
+	function fill(record: UserRecord | null) {
+		email = record?.email ?? '';
+		emailVerified = record?.email_verified ?? false;
+		firstName = record?.first_name ?? '';
+		lastName = record?.last_name ?? '';
+		isActive = record?.is_active ?? true;
+		password = '';
+		confirmPassword = '';
+		// A password an administrator makes up for someone is one they should
+		// replace, so a new user's starts out temporary.
+		isTemporaryPassword = record ? record.is_temporary_password : true;
 		error = '';
 
 		values = Object.fromEntries(
 			extras.map((field) => {
-				const stored = user?.data?.[field.name];
+				const stored = record?.data?.[field.name];
 
 				if (field.type === 'bool') return [field.name, stored === true];
 				if (field.type === 'date') return [field.name, stored ? String(stored).slice(0, 10) : ''];
@@ -63,7 +159,7 @@
 				return [field.name, stored == null ? '' : String(stored)];
 			})
 		);
-	});
+	}
 
 	/** Empty text is left out entirely, which is how "not set" is stored. */
 	function payload() {
@@ -85,18 +181,33 @@
 			first_name: firstName.trim(),
 			last_name: lastName.trim(),
 			is_active: isActive,
+			is_temporary_password: isTemporaryPassword && hasPassword,
+			...(password !== '' ? { password, confirm_password: confirmPassword } : {}),
 			data
 		};
 	}
 
-	/** Writing the record. Whether that is a new one or an edit is the only
-	    difference; what happens afterwards — the list refilled, the panel
-	    closed — is the same either way. */
+	/** Writing the record. An edit closes the panel; a new user stays open on
+	    its role mapping, since giving roles is usually the next thing to do.
+	    Roles count their users, so they are refilled too. */
 	const save = createMutation(() => ({
-		mutationFn: () => (user ? usersApi.update(user.id, payload()) : usersApi.create(payload())),
-		onSuccess: async () => {
-			await queryClient.invalidateQueries({ queryKey: keys.users.all });
-			open = false;
+		mutationFn: () =>
+			current ? usersApi.update(current.id, payload()) : usersApi.create(payload()),
+		onSuccess: async (result: { user: UserRecord }) => {
+			await Promise.all([
+				queryClient.invalidateQueries({ queryKey: keys.users.all }),
+				queryClient.invalidateQueries({ queryKey: keys.roles.all })
+			]);
+
+			if (current) {
+				open = false;
+				return;
+			}
+
+			current = result.user;
+			fill(result.user);
+			created = true;
+			tab = 'roles';
 		},
 		onError: (err: unknown) => {
 			error = err instanceof ApiError ? err.message : 'Could not save this user';
@@ -110,114 +221,213 @@
 		event.preventDefault();
 
 		// Enter and a double click both submit; one save at a time is enough,
-		// and two would race each other to write the same record.
-		if (saving) return;
+		// and two would race each other to write the same record. The role
+		// mapping saves as it goes, so the form only ever writes the record.
+		if (tab !== 'user' || !canSubmit) return;
 
 		error = '';
 		saving = true;
 		save.mutate();
 	}
+
+	const tabs = $derived([
+		{ value: 'user', label: 'User', icon: RiUserLine },
+		{
+			value: 'roles',
+			label: 'Role mapping',
+			icon: RiShieldUserLine,
+			count: mappings.data?.filter((it) => it.assigned).length,
+			disabled: !editing
+		}
+	]);
 </script>
 
-<Drawer bind:open title={editing ? 'Edit user record' : 'New user record'} onsubmit={submit}>
-	{#if error}
-		<div class="error"><Alert>{error}</Alert></div>
+<Drawer
+	bind:open
+	title={editing ? (editable ? 'Edit user' : 'User') : 'New user'}
+	meta={current?.email}
+	width="44rem"
+	onsubmit={submit}
+>
+	{#if !editing}
+		<p class="note">Create the user first; roles are given on the Role mapping tab afterwards.</p>
+	{:else if created}
+		<p class="note success">
+			User created, with the default roles. Assign any others here, or close the panel.
+		</p>
 	{/if}
 
-	<section>
-		<h3>Account</h3>
+	<Tabs {tabs} bind:value={tab} label="User sections">
+		{#snippet panel(value)}
+			{#if value === 'user'}
+				{#if error}
+					<div class="error"><Alert>{error}</Alert></div>
+				{/if}
 
-		{#if editing}
-			<!-- The id is what every other system refers to this record by, so
-			     it is shown and can be copied, but it is not something to
-			     edit. -->
-			<Input label="id" icon={RiKey2Line} value={user?.id ?? ''} readOnly />
-		{/if}
+				<!-- A disabled fieldset disables every control inside it at once,
+				     which is how the tab becomes read-only for someone who may
+				     only look. -->
+				<fieldset disabled={!editable}>
+					<FormSection
+						title="Account"
+						description="Who the user is, and the address they sign in with."
+					>
+						<Input
+							label="Email"
+							icon={RiMailLine}
+							bind:value={email}
+							type="email"
+							autocomplete="off"
+							placeholder="user@example.com"
+							required
+						/>
 
-		<Input
-			label="email"
-			icon={RiMailLine}
-			bind:value={email}
-			type="email"
-			autocomplete="off"
-			placeholder="user@example.com"
-			required
-		/>
+						<div class="pair">
+							<Input label="First name" bind:value={firstName} />
+							<Input label="Last name" bind:value={lastName} />
+						</div>
 
-		<div class="names">
-			<Input label="first_name" bind:value={firstName} />
-			<Input label="last_name" bind:value={lastName} />
-		</div>
-	</section>
+						{#if editing}
+							<!-- What every other system refers to this record by: shown and
+							     easy to copy, never edited. -->
+							<Input label="User ID" value={current?.id ?? ''} readOnly copyable />
+						{/if}
+					</FormSection>
 
-	<section>
-		<h3>Flags</h3>
+					<FormSection
+						title="Password"
+						description={editing
+							? current?.has_password
+								? 'Leave both fields empty to keep the current password.'
+								: 'This user has no password yet.'
+							: 'At least 8 characters.'}
+					>
+						<div class="pair">
+							<PasswordInput
+								label={editing ? 'New password' : 'Password'}
+								bind:value={password}
+								autocomplete="new-password"
+								required={!editing}
+							/>
+							<PasswordInput
+								label="Confirm password"
+								bind:value={confirmPassword}
+								autocomplete="new-password"
+								required={!editing || password !== ''}
+							/>
+						</div>
 
-		<div class="flags">
-			<Switch label="email_verified" bind:checked={emailVerified} />
-			<Switch label="is_active" bind:checked={isActive} />
+						{#if mismatch}
+							<p class="mismatch">The passwords do not match.</p>
+						{/if}
 
-			{#each flags as field (field.id)}
-				<FieldInput {field} bind:value={values[field.name]} />
-			{/each}
-		</div>
-	</section>
+						<SwitchField
+							label="Temporary password"
+							description="The user has to choose a new password the next time they sign in."
+							bind:checked={isTemporaryPassword}
+							disabled={!hasPassword}
+						/>
+					</FormSection>
 
-	{#if details.length > 0}
-		<section>
-			<h3>Additional fields</h3>
+					<FormSection title="Status">
+						<div class="switches">
+							<SwitchField
+								label="Active"
+								description="An inactive user cannot sign in to any application."
+								bind:checked={isActive}
+							/>
+							<SwitchField
+								label="Email verified"
+								description="Whether the user has confirmed they own this address."
+								bind:checked={emailVerified}
+							/>
+						</div>
+					</FormSection>
 
-			{#each details as field (field.id)}
-				<FieldInput {field} bind:value={values[field.name]} />
-			{/each}
-		</section>
-	{/if}
+					{#if extras.length > 0}
+						<FormSection
+							title="Additional fields"
+							description="The fields this organisation keeps about its users."
+						>
+							{#each details as field (field.id)}
+								<FieldInput {field} bind:value={values[field.name]} />
+							{/each}
+
+							{#if flags.length > 0}
+								<div class="flags">
+									{#each flags as field (field.id)}
+										<FieldInput {field} bind:value={values[field.name]} />
+									{/each}
+								</div>
+							{/if}
+						</FormSection>
+					{/if}
+				</fieldset>
+			{:else if current}
+				<RoleMappings userId={current.id} {roles} {applications} {admin} />
+			{/if}
+		{/snippet}
+	</Tabs>
 
 	{#snippet footer()}
 		<span class="spacer"></span>
 
-		<Button variant="subtle" onclick={() => (open = false)} disabled={saving}>Cancel</Button>
-
-		<Button type="submit" loading={saving} disabled={saving || email.trim() === ''}>
-			{saving ? 'Saving…' : editing ? 'Save changes' : 'Create user'}
+		<Button variant="subtle" onclick={() => (open = false)} disabled={saving}>
+			{editable && tab === 'user' && !created ? 'Cancel' : 'Close'}
 		</Button>
+
+		{#if editable && tab === 'user'}
+			<Button type="submit" loading={saving} disabled={!canSubmit}>
+				{saving ? 'Saving…' : editing ? 'Save changes' : 'Create user'}
+			</Button>
+		{/if}
 	{/snippet}
 </Drawer>
 
 <style>
-	section {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-3);
+	fieldset {
+		min-width: 0;
+		margin: 0;
+		padding: 0;
+		border: none;
 	}
 
 	.error {
 		margin-bottom: var(--space-4);
 	}
 
-	section + section {
-		margin-top: var(--space-5);
-		padding-top: var(--space-5);
-		border-top: 1px solid var(--color-border);
+	.note {
+		margin: 0 0 var(--space-4);
+		padding: var(--space-2) var(--space-3);
+		border-radius: var(--radius-sm);
+		background: var(--surface-info);
+		font-size: var(--text-sm);
 	}
 
-	h3 {
-		margin: 0;
-		color: var(--color-text-hint);
-		font-size: var(--text-xs);
-		font-weight: 600;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
+	.note.success {
+		background: var(--surface-success);
 	}
 
-	.names {
+	.pair {
 		display: grid;
 		grid-template-columns: 1fr 1fr;
+		align-items: start;
 		gap: var(--space-3);
 	}
 
-	/* Flags are short, so they sit two to a row where there is room rather
-	   than running down the panel one by one. */
+	.mismatch {
+		margin: calc(var(--space-2) * -1) 0 0;
+		color: var(--color-danger);
+		font-size: var(--text-sm);
+	}
+
+	.switches {
+		display: flex;
+		flex-direction: column;
+	}
+
+	/* The organisation's yes-or-no fields are short, so they sit two to a
+	   row where there is room. */
 	.flags {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
@@ -228,8 +438,8 @@
 		flex: 1;
 	}
 
-	@media (max-width: 30rem) {
-		.names {
+	@media (max-width: 34rem) {
+		.pair {
 			grid-template-columns: 1fr;
 		}
 	}

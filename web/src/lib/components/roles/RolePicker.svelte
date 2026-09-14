@@ -1,0 +1,181 @@
+<script lang="ts">
+	import { RiGlobalLine, RiSearchLine, RiShieldUserLine } from 'svelte-remixicon';
+	import type { Application, Role } from '$lib/api';
+	import { Badge, Icon } from '$lib/components/ui';
+	import Choice from './Choice.svelte';
+	import { byScope } from './roles';
+
+	type Props = {
+		/** The roles that can be picked. */
+		roles: Role[];
+		applications: Application[];
+		/** The ids picked so far. */
+		picked: string[];
+		/** Why a role cannot be picked, or undefined when it can. */
+		reason?: (role: Role) => string | undefined;
+		/** Said when there is nothing to pick at all. */
+		empty?: string;
+	};
+
+	let {
+		roles,
+		applications,
+		picked = $bindable([]),
+		reason = () => undefined,
+		empty = 'There are no roles to choose from.'
+	}: Props = $props();
+
+	let search = $state('');
+
+	/** The roles matching the search, grouped under their scope: global
+	    first, then each application by name. The search matches the role and
+	    its application, so typing an application's name finds its roles. */
+	const groups = $derived(
+		byScope(
+			roles.filter((role) => {
+				const wanted = search.trim().toLowerCase();
+				if (wanted === '') return true;
+
+				const app = applications.find((it) => it.id === role.application_id)?.name ?? 'global';
+
+				return [role.name, role.description, app].some((text) =>
+					text.toLowerCase().includes(wanted)
+				);
+			}),
+			applications
+		)
+	);
+
+	function toggle(id: string, on: boolean) {
+		picked = on ? [...picked, id] : picked.filter((it) => it !== id);
+	}
+
+	/** Enter in the search box would submit the form around the panel. */
+	function stayPut(event: KeyboardEvent) {
+		if (event.key === 'Enter') event.preventDefault();
+	}
+</script>
+
+<div class="picker">
+	<label class="search">
+		<Icon icon={RiSearchLine} />
+		<input
+			type="search"
+			placeholder="Search by role or application…"
+			bind:value={search}
+			onkeydown={stayPut}
+			aria-label="Search roles"
+		/>
+	</label>
+
+	<div class="list">
+		{#each groups as group (group.scope)}
+			<div class="group">
+				<div class="heading">
+					<Icon icon={group.scope === null ? RiGlobalLine : RiShieldUserLine} size="0.875rem" />
+					{group.scope === null ? 'Global roles' : group.name}
+				</div>
+
+				{#each group.roles as role (role.id)}
+					{@const why = reason(role)}
+					<Choice
+						name={role.name}
+						description={why ?? role.description}
+						checked={picked.includes(role.id)}
+						onChange={(on) => toggle(role.id, on)}
+						disabled={why !== undefined}
+					>
+						{#snippet badges()}
+							{#if role.inherited_roles.length > 0}
+								<Badge>composite</Badge>
+							{/if}
+							{#if role.is_default}
+								<Badge tone="success">default</Badge>
+							{/if}
+						{/snippet}
+					</Choice>
+				{/each}
+			</div>
+		{:else}
+			<p class="empty">{roles.length === 0 ? empty : 'No roles match this.'}</p>
+		{/each}
+	</div>
+</div>
+
+<style>
+	.picker {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-3);
+	}
+
+	.search {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		height: var(--control-height);
+		padding: 0 12px;
+		border-radius: var(--radius-sm);
+		background: var(--color-input);
+		color: var(--color-text-hint);
+	}
+
+	.search:focus-within {
+		background: var(--color-input-focus);
+	}
+
+	.search input {
+		flex: 1;
+		min-width: 0;
+		border: none;
+		background: transparent;
+		color: var(--color-text);
+		font: inherit;
+		font-size: var(--text-base);
+	}
+
+	.search input:focus {
+		outline: none;
+	}
+
+	.list {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-3);
+		max-height: min(26rem, 55vh);
+		padding: var(--space-1);
+		overflow-y: auto;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+	}
+
+	.group {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.heading {
+		position: sticky;
+		top: calc(var(--space-1) * -1);
+		z-index: 1;
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 6px var(--space-2);
+		background: var(--color-surface);
+		color: var(--color-text-hint);
+		font-size: var(--text-xs);
+		font-weight: 700;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+	}
+
+	.empty {
+		margin: 0;
+		padding: var(--space-4) var(--space-2);
+		color: var(--color-text-hint);
+		font-size: var(--text-sm);
+		text-align: center;
+	}
+</style>

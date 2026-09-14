@@ -7,6 +7,7 @@
 		Badge,
 		Button,
 		Drawer,
+		FormSection,
 		Icon,
 		IconButton,
 		Input,
@@ -208,142 +209,145 @@
 		<div class="error"><Alert>{error}</Alert></div>
 	{/if}
 
-	<h3 class="group">Built in</h3>
-	<p class="hint lead">
-		Every user record has these. They are columns of the record itself, so they cannot be changed or
-		removed here.
-	</p>
+	<FormSection
+		title="Built-in fields"
+		description="Every user record has these. They are columns of the record itself, so they cannot be changed or removed."
+	>
+		<ul class="fields">
+			{#each builtinFields as field (field.name)}
+				<li class="locked">
+					<Icon icon={fieldIcons[field.type]} />
 
-	<ul class="fields">
-		{#each builtinFields as field (field.name)}
-			<li class="locked">
-				<Icon icon={fieldIcons[field.type]} />
+					<span class="name">{field.name}</span>
+					<span class="hint">{field.type}</span>
 
-				<span class="name">{field.name}</span>
-				<span class="hint">{field.type}</span>
+					<span class="rules">
+						{#each summary(field) as rule (rule)}
+							<Badge>{rule}</Badge>
+						{/each}
+					</span>
+				</li>
+			{/each}
+		</ul>
+	</FormSection>
 
-				<span class="rules">
-					{#each summary(field) as rule (rule)}
-						<Badge>{rule}</Badge>
-					{/each}
-				</span>
-			</li>
-		{/each}
-	</ul>
+	<FormSection
+		title="Added fields"
+		description="Anything else this organisation keeps about a user. Adding one needs no migration."
+	>
+		<ul class="fields">
+			{#each addedFields as field (field.id)}
+				<li class:editing={editing?.id === field.id}>
+					<Icon icon={fieldIcons[field.type]} />
 
-	<h3 class="group second">Added here</h3>
-	<p class="hint lead">
-		Anything else this organisation keeps about a user. The values live in the record, so adding one
-		needs no migration.
-	</p>
+					<span class="name">{field.name}</span>
+					<span class="hint">{field.type}</span>
 
-	<ul class="fields">
-		{#each addedFields as field (field.id)}
-			<li class:editing={editing?.id === field.id}>
-				<Icon icon={fieldIcons[field.type]} />
+					<span class="rules">
+						{#each summary(field) as rule (rule)}
+							<Badge>{rule}</Badge>
+						{/each}
+					</span>
 
-				<span class="name">{field.name}</span>
-				<span class="hint">{field.type}</span>
+					<IconButton
+						icon={RiPencilLine}
+						label="Edit {field.name}"
+						size="sm"
+						onclick={() => edit(field)}
+						disabled={busy}
+					/>
 
-				<span class="rules">
-					{#each summary(field) as rule (rule)}
-						<Badge>{rule}</Badge>
-					{/each}
-				</span>
+					<IconButton
+						icon={RiDeleteBinLine}
+						label="Remove {field.name}"
+						size="sm"
+						colorPalette="danger"
+						onclick={() => {
+							if (busy) return;
+							error = '';
+							busy = true;
+							remove.mutate(field);
+						}}
+						disabled={busy}
+					/>
+				</li>
+			{:else}
+				<li class="hint">No added fields yet.</li>
+			{/each}
+		</ul>
+	</FormSection>
 
-				<IconButton
-					icon={RiPencilLine}
-					label="Edit {field.name}"
-					size="sm"
-					onclick={() => edit(field)}
-					disabled={busy}
-				/>
-
-				<IconButton
-					icon={RiDeleteBinLine}
-					label="Remove {field.name}"
-					size="sm"
-					colorPalette="danger"
-					onclick={() => {
-						if (busy) return;
-						error = '';
-						busy = true;
-						remove.mutate(field);
-					}}
-					disabled={busy}
-				/>
-			</li>
-		{:else}
-			<li class="hint">No added fields yet.</li>
-		{/each}
-	</ul>
-
-	<form onsubmit={submit}>
-		<h3>{editing ? `Edit ${editing.name}` : 'Add a field'}</h3>
-
-		<div class="row">
-			<Input
-				label="Label"
-				value={label}
-				oninput={(event) => {
-					label = event.currentTarget.value;
-					if (!editing) name = suggestName(label);
-				}}
-				placeholder="Phone number"
-			/>
-
-			<Input
-				label="Name"
-				bind:value={name}
-				placeholder="phone_number"
-				readOnly={editing !== null}
-			/>
-
-			<Select label="Type" bind:value={type} options={types} readOnly={editing !== null} />
-		</div>
-
-		{#if bounded || prefixed}
+	<FormSection
+		title={editing ? `Edit ${editing.name}` : 'Add a field'}
+		description={editing
+			? 'A field keeps its name and type once records hold values under them.'
+			: 'The name is what the value is stored under; the type cannot change later.'}
+	>
+		<form onsubmit={submit}>
 			<div class="row">
-				{#if bounded}
-					<Input
-						label={lengths ? 'Least characters' : 'Smallest value'}
-						bind:value={min}
-						type="number"
-						placeholder="any"
-					/>
+				<Input
+					label="Label"
+					value={label}
+					oninput={(event) => {
+						label = event.currentTarget.value;
+						if (!editing) name = suggestName(label);
+					}}
+					placeholder="Phone number"
+				/>
 
-					<Input
-						label={lengths ? 'Most characters' : 'Largest value'}
-						bind:value={max}
-						type="number"
-						placeholder="any"
-					/>
-				{/if}
+				<Input
+					label="Name"
+					bind:value={name}
+					placeholder="phone_number"
+					readOnly={editing !== null}
+				/>
 
-				{#if prefixed}
-					<Input label="Must start with" bind:value={startsWith} placeholder="+" />
-				{/if}
+				<Select label="Type" bind:value={type} options={types} readOnly={editing !== null} />
 			</div>
-		{/if}
 
-		<div class="switches">
-			<Switch label="Required" bind:checked={required} />
-			<Switch label="Unique" bind:checked={unique} />
-		</div>
+			{#if bounded || prefixed}
+				<div class="row">
+					{#if bounded}
+						<Input
+							label={lengths ? 'Least characters' : 'Smallest value'}
+							bind:value={min}
+							type="number"
+							placeholder="any"
+						/>
 
-		<div class="actions">
-			{#if editing}
-				<Button variant="subtle" onclick={blank} disabled={busy}>Cancel</Button>
+						<Input
+							label={lengths ? 'Most characters' : 'Largest value'}
+							bind:value={max}
+							type="number"
+							placeholder="any"
+						/>
+					{/if}
+
+					{#if prefixed}
+						<Input label="Must start with" bind:value={startsWith} placeholder="+" />
+					{/if}
+				</div>
 			{/if}
 
-			<Button type="submit" disabled={busy || (name.trim() === '' && label.trim() === '')}>
-				{#if !editing}
-					<Icon icon={RiAddLine} />
+			<div class="switches">
+				<Switch label="Required" bind:checked={required} />
+				<Switch label="Unique" bind:checked={unique} />
+			</div>
+
+			<div class="actions">
+				{#if editing}
+					<Button variant="subtle" onclick={blank} disabled={busy}>Cancel</Button>
 				{/if}
-				{editing ? 'Save field' : 'Add field'}
-			</Button>
-		</div>
-	</form>
+
+				<Button type="submit" disabled={busy || (name.trim() === '' && label.trim() === '')}>
+					{#if !editing}
+						<Icon icon={RiAddLine} />
+					{/if}
+					{editing ? 'Save field' : 'Add field'}
+				</Button>
+			</div>
+		</form>
+	</FormSection>
 
 	{#snippet footer()}
 		<span class="spacer"></span>
@@ -387,26 +391,6 @@
 		background: transparent;
 	}
 
-	.group {
-		margin: 0;
-		color: var(--color-text-hint);
-		font-size: var(--text-xs);
-		font-weight: 600;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-	}
-
-	.group.second {
-		margin-top: var(--space-5);
-		padding-top: var(--space-5);
-		border-top: 1px solid var(--color-border);
-	}
-
-	.lead {
-		margin: var(--space-1) 0 var(--space-3);
-		line-height: 1.4;
-	}
-
 	.fields li.editing {
 		background: var(--surface-info);
 	}
@@ -436,18 +420,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-3);
-		margin-top: var(--space-5);
-		padding-top: var(--space-5);
-		border-top: 1px solid var(--color-border);
-	}
-
-	h3 {
-		margin: 0;
-		color: var(--color-text-hint);
-		font-size: var(--text-xs);
-		font-weight: 600;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
 	}
 
 	.row {

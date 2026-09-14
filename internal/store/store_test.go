@@ -50,3 +50,18 @@ func TestTranslateKeepsOtherErrors(t *testing.T) {
 		t.Fatalf("translate(%v) = %v, want it unchanged", original, got)
 	}
 }
+
+func TestContains(t *testing.T) {
+	tests := map[string]string{
+		"Ann":        "%ann%",
+		"50%":        `%50\%%`,
+		"first_name": `%first\_name%`,
+		`a\b`:        `%a\\b%`,
+	}
+
+	for in, want := range tests {
+		if got := contains(in); got != want {
+			t.Errorf("contains(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

@@ -1,0 +1,37 @@
+import type { Admin, AdminPermissionName } from '$lib/api';
+
+/**
+ * What the signed-in administrator may do, for deciding what to show.
+ *
+ * This is only ever about the panel: a control that is hidden is a request
+ * nobody makes by accident. The server checks every request against the same
+ * roles, so a request made anyway is refused there.
+ */
+
+/** Whether the administrator holds the permission for the whole panel, or,
+    given an application, for that application. */
+export function can(
+	admin: Admin | null | undefined,
+	permission: AdminPermissionName,
+	application?: string
+): boolean {
+	if (!admin) return false;
+	if (admin.is_super_admin || admin.permissions.includes(permission)) return true;
+
+	return (
+		application !== undefined && (admin.scoped_permissions[application] ?? []).includes(permission)
+	);
+}
+
+/** Whether the administrator holds the permission for the whole panel or for
+    at least one application: enough to open a page that is then narrowed to
+    the applications they can reach. */
+export function canAnywhere(
+	admin: Admin | null | undefined,
+	permission: AdminPermissionName
+): boolean {
+	if (!admin) return false;
+	if (can(admin, permission)) return true;
+
+	return Object.values(admin.scoped_permissions).some((granted) => granted.includes(permission));
+}

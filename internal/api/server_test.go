@@ -22,7 +22,12 @@ func testEngine(origins ...string) *gin.Engine {
 	cfg := config.Config{Addr: ":0", CORSOrigins: origins}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	return New(cfg, nil, log)
+	r, err := New(cfg, nil, log)
+	if err != nil {
+		panic(err)
+	}
+
+	return r
 }
 
 // do sends a request through the router and returns the response.
@@ -88,7 +93,7 @@ func TestRoutes(t *testing.T) {
 }
 
 // The matrix of who may call the API lives with the middleware, in
-// http/middleware/cors_test.go. What matters here is that the engine actually
+// cors/cors_test.go. What matters here is that the engine actually
 // mounts it: a server that forgot to would pass every test over there.
 func TestEngineAppliesCORS(t *testing.T) {
 	const allowed = "http://localhost:5173"
@@ -103,5 +108,31 @@ func TestEngineAppliesCORS(t *testing.T) {
 	w = do(r, http.MethodGet, "/healthz", map[string]string{"Origin": "http://evil.test"})
 	if got := w.Header().Get("Access-Control-Allow-Origin"); got != "" {
 		t.Errorf("Access-Control-Allow-Origin = %q, want it unset", got)
+	}
+}
+
+// A caller cannot choose the address it is recorded under: with no proxy
+// trusted, X-Forwarded-For is ignored.
+func TestForwardedForIsNotTrustedByDefault(t *testing.T) {
+	r := testEngine()
+
+	var seen string
+	r.GET("/ip", func(c *gin.Context) { seen = c.ClientIP() })
+
+	req := httptest.NewRequest(http.MethodGet, "/ip", nil)
+	req.RemoteAddr = "203.0.113.7:4000"
+	req.Header.Set("X-Forwarded-For", "10.0.0.1")
+	r.ServeHTTP(httptest.NewRecorder(), req)
+
+	if seen != "203.0.113.7" {
+		t.Errorf("ClientIP() = %q, want the connection's own address", seen)
+	}
+}
+
+func TestNewRefusesABadTrustedProxy(t *testing.T) {
+	cfg := config.Config{TrustedProxies: []string{"not an address"}}
+
+	if _, err := New(cfg, nil, slog.New(slog.NewTextHandler(io.Discard, nil))); err == nil {
+		t.Error("New() accepted a trusted proxy that is not an address")
 	}
 }

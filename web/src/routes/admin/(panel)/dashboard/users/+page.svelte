@@ -5,6 +5,7 @@
 	import { SvelteURLSearchParams } from 'svelte/reactivity';
 	import {
 		RiAddLine,
+		RiCloseLine,
 		RiDeleteBinLine,
 		RiDownloadLine,
 		RiRefreshLine,
@@ -13,7 +14,14 @@
 	} from 'svelte-remixicon';
 	import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 	import { ApiError, usersApi, type UserRecord } from '$lib/api';
-	import { keys, userFieldsOptions, usersOptions } from '$lib/query';
+	import {
+		applicationChoicesOptions,
+		keys,
+		roleChoicesOptions,
+		userFieldsOptions,
+		usersOptions
+	} from '$lib/query';
+	import { can } from '$lib/permissions';
 	import { Alert, Button, Icon, IconButton, SelectionBar } from '$lib/components/ui';
 	import FieldsDrawer from '$lib/components/users/FieldsDrawer.svelte';
 	import UserDrawer from '$lib/components/users/UserDrawer.svelte';
@@ -29,9 +37,22 @@
 	// after — a save, the refresh button, coming back to the tab — is the
 	// cache being refilled rather than the page being reloaded.
 	const users = createQuery(() =>
-		usersOptions({ search: data.search, verified: data.verified }, data.page)
+		usersOptions({ search: data.search, verified: data.verified, role: data.role }, data.page)
 	);
 	const fields = createQuery(() => userFieldsOptions(data.fields));
+	const roles = createQuery(() => roleChoicesOptions(data.roles));
+	const applications = createQuery(() => applicationChoicesOptions(data.applications));
+
+	/** What this administrator may change. Without users.write the page is
+	    for looking; without user_fields.write the field settings are hidden. */
+	const canWrite = $derived(can(data.admin, 'users.write'));
+	const canEditFields = $derived(can(data.admin, 'user_fields.write'));
+
+	/** The role the list is filtered to, when the URL names one. */
+	const filterRole = $derived(roles.data.find((role) => role.id === data.role));
+	const filterApp = $derived(
+		applications.data.find((app) => app.id === filterRole?.application_id)
+	);
 
 	// A writable derived: typing updates it, and it goes back to following the
 	// URL whenever that changes, so the back button and a shared link both put
@@ -62,7 +83,7 @@
 
 	/** The search and the filter are the URL, so the server renders the
 	    result and the back button walks through it. */
-	async function apply(changes: { search?: string; verified?: string }) {
+	async function apply(changes: { search?: string; verified?: string; role?: string }) {
 		const params = new SvelteURLSearchParams(page.url.searchParams);
 
 		for (const [key, value] of Object.entries(changes)) {
@@ -107,6 +128,7 @@
 		try {
 			await Promise.all([
 				queryClient.invalidateQueries({ queryKey: keys.users.all }),
+				queryClient.invalidateQueries({ queryKey: keys.roles.choices }),
 				new Promise((done) => setTimeout(done, 400))
 			]);
 		} finally {
@@ -136,7 +158,11 @@
 		},
 		onSuccess: () => {
 			reset();
-			return queryClient.invalidateQueries({ queryKey: keys.users.all });
+			// A role's count of users changes with them.
+			return Promise.all([
+				queryClient.invalidateQueries({ queryKey: keys.users.all }),
+				queryClient.invalidateQueries({ queryKey: keys.roles.all })
+			]);
 		},
 		onError: (err: unknown) => {
 			error = err instanceof ApiError ? err.message : 'Could not delete these users';
@@ -174,7 +200,13 @@
 		<h1>Users</h1>
 		<span class="total">{users.data.total} total</span>
 
-		<IconButton icon={RiSettings3Line} label="Field settings" onclick={() => (fieldsOpen = true)} />
+		{#if canEditFields}
+			<IconButton
+				icon={RiSettings3Line}
+				label="Field settings"
+				onclick={() => (fieldsOpen = true)}
+			/>
+		{/if}
 
 		<IconButton
 			icon={RiRefreshLine}
@@ -185,12 +217,14 @@
 		/>
 	</div>
 
-	<div class="actions">
-		<Button onclick={() => openUser(null)}>
-			<Icon icon={RiAddLine} />
-			New user
-		</Button>
-	</div>
+	{#if canWrite}
+		<div class="actions">
+			<Button onclick={() => openUser(null)}>
+				<Icon icon={RiAddLine} />
+				New user
+			</Button>
+		</div>
+	{/if}
 </header>
 
 <div class="toolbar">
@@ -210,6 +244,21 @@
 			aria-label="Search users"
 		/>
 	</form>
+
+	{#if data.role}
+		<!-- Arriving from the roles page filters the list to one role's
+		     holders; this says so, and is the way back to everyone. -->
+		<button
+			type="button"
+			class="chip"
+			title="Clear the role filter"
+			onclick={() => apply({ role: '' })}
+		>
+			role: <strong>{filterRole?.name ?? 'unknown'}</strong>
+			{#if filterApp}in {filterApp.name}{/if}
+			<Icon icon={RiCloseLine} />
+		</button>
+	{/if}
 
 	<div class="filter" role="group" aria-label="Filter by verified">
 		{#each filters as filter (filter.value)}
@@ -232,9 +281,10 @@
 <UserTable
 	users={users.data.users}
 	fields={fields.data}
+	applications={applications.data}
 	onOpen={openUser}
-	selected={chosen}
-	onSelect={(ids) => (selected = ids)}
+	selected={canWrite ? chosen : undefined}
+	onSelect={canWrite ? (ids) => (selected = ids) : undefined}
 />
 
 <SelectionBar count={chosen.length} onReset={reset}>
@@ -272,8 +322,18 @@
 	{/if}
 </SelectionBar>
 
-<UserDrawer user={editing} fields={fields.data} bind:open={userOpen} />
-<FieldsDrawer fields={fields.data} bind:open={fieldsOpen} />
+<UserDrawer
+	user={editing}
+	fields={fields.data}
+	applications={applications.data}
+	roles={roles.data}
+	admin={data.admin}
+	editable={canWrite}
+	bind:open={userOpen}
+/>
+{#if canEditFields}
+	<FieldsDrawer fields={fields.data} bind:open={fieldsOpen} />
+{/if}
 
 <style>
 	header {
@@ -337,6 +397,27 @@
 
 	.search input:focus {
 		outline: none;
+	}
+
+	.chip {
+		display: flex;
+		align-items: center;
+		gap: var(--space-1);
+		height: var(--control-height);
+		padding: 0 var(--space-3);
+		border: none;
+		border-radius: var(--radius-md);
+		background: var(--surface-info);
+		color: var(--color-text);
+		font: inherit;
+		font-size: var(--text-base);
+		white-space: nowrap;
+		cursor: pointer;
+	}
+
+	.chip strong {
+		font-family: var(--font-mono);
+		font-size: var(--text-sm);
 	}
 
 	/* The same height as the search box beside it and the buttons above it:

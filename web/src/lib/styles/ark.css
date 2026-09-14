@@ -322,6 +322,11 @@
 	line-height: 0;
 }
 
+[data-scope='checkbox'][data-part='root'][data-disabled] {
+	cursor: not-allowed;
+	opacity: 0.5;
+}
+
 [data-scope='checkbox'][data-part='label'] {
 	font-size: var(--text-base);
 }

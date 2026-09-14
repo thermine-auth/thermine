@@ -32,6 +32,12 @@
 		children,
 		footer
 	}: Props = $props();
+
+	/** Where focus goes when the panel opens: the panel itself, so the first
+	    thing a keyboard user tabs to is the first field, and nothing is ringed
+	    before anyone has pressed a key. Ark would otherwise focus the close
+	    button, the first focusable element. */
+	let panelEl = $state<HTMLElement | null>(null);
 </script>
 
 <!-- The parts of the panel, rendered inside either a form or a plain div
@@ -68,14 +74,14 @@
 	{/if}
 {/snippet}
 
-<Dialog.Root bind:open lazyMount unmountOnExit>
+<Dialog.Root bind:open lazyMount unmountOnExit initialFocusEl={() => panelEl}>
 	<Dialog.Backdrop />
 	<Dialog.Positioner>
 		<Dialog.Content style={width ? `--drawer-width: ${width}` : undefined}>
 			{#if onsubmit}
-				<form class="layout" {onsubmit}>{@render panel()}</form>
+				<form class="layout" {onsubmit} bind:this={panelEl} tabindex="-1">{@render panel()}</form>
 			{:else}
-				<div class="layout">{@render panel()}</div>
+				<div class="layout" bind:this={panelEl} tabindex="-1">{@render panel()}</div>
 			{/if}
 		</Dialog.Content>
 	</Dialog.Positioner>
@@ -89,6 +95,10 @@
 		flex-direction: column;
 		min-height: 0;
 		height: 100%;
+	}
+
+	.layout:focus {
+		outline: none;
 	}
 
 	header {

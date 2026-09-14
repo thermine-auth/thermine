@@ -4,6 +4,7 @@
 	import { RiFileListLine, RiShieldKeyholeLine, RiDashboardLine } from 'svelte-remixicon';
 	import type { Admin } from '$lib/api';
 	import { Icon, LinkButton, ThemeToggle } from '$lib/components/ui';
+	import { can } from '$lib/permissions';
 	import AccountMenu from './AccountMenu.svelte';
 
 	type Props = { admin: Admin };
@@ -12,10 +13,14 @@
 
 	// The top-level areas. Everything inside the dashboard has its own sidebar,
 	// and anything to do with this account lives in the menu on the right.
-	const links = [
+	// The logs are only offered to an administrator whose roles allow reading
+	// them.
+	const links = $derived([
 		{ href: resolve('/admin/dashboard'), label: 'Dashboard', icon: RiDashboardLine },
-		{ href: resolve('/admin/logs'), label: 'Logs', icon: RiFileListLine }
-	];
+		...(can(admin, 'activity.read')
+			? [{ href: resolve('/admin/logs'), label: 'Logs', icon: RiFileListLine }]
+			: [])
+	]);
 
 	/** A link is current when the page is it or sits below it. */
 	function isCurrent(href: string): boolean {

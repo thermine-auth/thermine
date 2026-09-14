@@ -61,5 +61,10 @@ func run(log *slog.Logger) error {
 	//
 	// Run blocks until the server stops. Gin listens for us: Run is a wrapper
 	// around net/http's ListenAndServe.
-	return api.New(cfg, store.New(db), log).Run(cfg.Addr)
+	server, err := api.New(cfg, store.New(db), log)
+	if err != nil {
+		return err
+	}
+
+	return server.Run(cfg.Addr)
 }

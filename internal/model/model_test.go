@@ -1,6 +1,8 @@
 package model
 
 import (
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -72,7 +74,28 @@ func TestAuditLogBeforeCreateSetsID(t *testing.T) {
 // All feeds both the migration generator and AutoMigrate; a model missing
 // from it silently never gets a table.
 func TestAllListsEveryModel(t *testing.T) {
-	if got, want := len(All()), 8; got != want {
+	if got, want := len(All()), 14; got != want {
 		t.Errorf("All() has %d models, want %d — was a new model added without listing it here?", got, want)
+	}
+}
+
+// A bool column must not default to true. GORM leaves a zero value out of an
+// INSERT when the column has a default, so false is silently stored as true:
+// an application created disabled comes out enabled, a user created inactive
+// comes out active. Callers set these explicitly instead.
+func TestNoBoolDefaultsToTrue(t *testing.T) {
+	for _, m := range All() {
+		typ := reflect.TypeOf(m).Elem()
+
+		for i := range typ.NumField() {
+			field := typ.Field(i)
+			if field.Type.Kind() != reflect.Bool {
+				continue
+			}
+
+			if strings.Contains(field.Tag.Get("gorm"), "default:true") {
+				t.Errorf("%s.%s has default:true, so false cannot be stored", typ.Name(), field.Name)
+			}
+		}
 	}
 }

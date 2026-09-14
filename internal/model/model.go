@@ -44,13 +44,19 @@ func newID() (uuid.UUID, error) {
 // a table.
 func All() []any {
 	return []any{
-		&Permission{},
 		&Role{},
+		&Application{},
 		&AdminUser{},
+		&AdminRoleAssignment{},
 		&AdminUserSession{},
 		&MFA{},
 		&AuditLog{},
 		&UserField{},
+		&API{},
+		&APIScope{},
+		&ApplicationAPI{},
+		&ApplicationAPIScope{},
+		&UserRole{},
 		&User{},
 	}
 }

@@ -8,6 +8,7 @@
 // Controls
 export { default as Button } from './Button.svelte';
 export { default as IconButton } from './IconButton.svelte';
+export { default as CopyButton } from './CopyButton.svelte';
 export { default as LinkButton } from './LinkButton.svelte';
 export type { ColorPalette, ControlProps, Size, Variant } from './control';
 
@@ -18,6 +19,7 @@ export { default as PasswordInput } from './PasswordInput.svelte';
 export { default as Select } from './Select.svelte';
 export type { SelectOption } from './select';
 export { default as Switch } from './Switch.svelte';
+export { default as SwitchField } from './SwitchField.svelte';
 export { default as Textarea } from './Textarea.svelte';
 export { default as Checkbox } from './Checkbox.svelte';
 
@@ -26,7 +28,9 @@ export { default as Alert } from './Alert.svelte';
 export { default as Badge } from './Badge.svelte';
 export { default as Card } from './Card.svelte';
 export { default as Drawer } from './Drawer.svelte';
+export { default as FormSection } from './FormSection.svelte';
 export { default as SelectionBar } from './SelectionBar.svelte';
+export { default as Tabs } from './Tabs.svelte';
 export { default as Tooltip } from './Tooltip.svelte';
 
 // Data and page furniture

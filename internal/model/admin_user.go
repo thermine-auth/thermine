@@ -1,6 +1,11 @@
 package model
 
-import "time"
+import (
+	"slices"
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // AdminUser is a member of staff who can sign in to the admin panel.
 type AdminUser struct {
@@ -22,9 +27,11 @@ type AdminUser struct {
 	FailedLoginCount int        `gorm:"not null;default:0" json:"-"`
 	LockedUntil      *time.Time `json:"locked_until,omitempty"`
 
-	Roles    []Role             `gorm:"many2many:admin_user_roles;constraint:OnDelete:CASCADE" json:"roles,omitempty"`
-	Sessions []AdminUserSession `gorm:"constraint:OnDelete:CASCADE" json:"-"`
-	MFA      []MFA              `gorm:"constraint:OnDelete:CASCADE" json:"-"`
+	// Assignments are the roles the administrator holds, each for the whole
+	// panel or for one application.
+	Assignments []AdminRoleAssignment `gorm:"constraint:OnDelete:CASCADE" json:"-"`
+	Sessions    []AdminUserSession    `gorm:"constraint:OnDelete:CASCADE" json:"-"`
+	MFA         []MFA                 `gorm:"constraint:OnDelete:CASCADE" json:"-"`
 }
 
 // TableName pins the table name so renaming the struct cannot silently rename
@@ -46,29 +53,107 @@ func (a AdminUser) CanSignIn(now time.Time) bool {
 	return a.LockedUntil == nil || now.After(*a.LockedUntil)
 }
 
-// HasRole reports whether the admin holds the given role. Roles must be loaded
-// for this to mean anything.
-func (a AdminUser) HasRole(name RoleName) bool {
-	for _, r := range a.Roles {
-		if r.Name == name {
+// HasRole reports whether the admin holds the given role for the whole panel.
+// Assignments must be loaded for this to mean anything.
+func (a AdminUser) HasRole(name string) bool {
+	for _, assignment := range a.Assignments {
+		if assignment.Global() && assignment.Role.Name == name {
 			return true
 		}
 	}
 	return false
 }
 
-// HasPermission reports whether any of the admin's roles grant the permission.
-// Roles and their permissions must be loaded for this to mean anything.
+// IsSuperAdmin reports whether the admin holds super_admin, which is what
+// managing other administrators and their roles needs.
+func (a AdminUser) IsSuperAdmin() bool {
+	return a.HasRole(RoleSuperAdmin)
+}
+
+// HasPermission reports whether the admin may do something across the whole
+// panel: some role assigned for the whole panel grants it.
 func (a AdminUser) HasPermission(name string) bool {
-	for _, r := range a.Roles {
-		if r.Name == RoleSuperAdmin {
+	return a.HasPermissionFor(name, nil)
+}
+
+// HasPermissionFor reports whether the admin may do something to one
+// application: a role assigned for the whole panel grants it, or one assigned
+// for that application does and the permission can be scoped.
+func (a AdminUser) HasPermissionFor(name string, application *uuid.UUID) bool {
+	for _, assignment := range a.Assignments {
+		if assignment.Grants(name, application) {
 			return true
-		}
-		for _, p := range r.Permissions {
-			if p.Name == name {
-				return true
-			}
 		}
 	}
 	return false
+}
+
+// HasPermissionAnywhere reports whether the admin may do something to at least
+// one application, which is what opening a list that is then narrowed to
+// their applications needs.
+func (a AdminUser) HasPermissionAnywhere(name string) bool {
+	if a.HasPermission(name) {
+		return true
+	}
+
+	for _, assignment := range a.Assignments {
+		if !assignment.Global() && assignment.Grants(name, assignment.ApplicationID) {
+			return true
+		}
+	}
+	return false
+}
+
+// ApplicationsWith says which applications the admin may do something to:
+// every one when a whole-panel role grants it, otherwise the ids of the
+// applications a scoped role grants it for.
+func (a AdminUser) ApplicationsWith(name string) (all bool, ids []uuid.UUID) {
+	if a.HasPermission(name) {
+		return true, nil
+	}
+
+	ids = []uuid.UUID{}
+	for _, assignment := range a.Assignments {
+		if !assignment.Global() && assignment.Grants(name, assignment.ApplicationID) {
+			ids = append(ids, *assignment.ApplicationID)
+		}
+	}
+	return false, ids
+}
+
+// Permissions is every catalog permission the admin holds for the whole
+// panel, in catalog order.
+func (a AdminUser) Permissions() []string {
+	granted := []string{}
+	for _, name := range AdminPermissionNames() {
+		if a.HasPermission(name) {
+			granted = append(granted, name)
+		}
+	}
+	return granted
+}
+
+// ScopedPermissions is, for each application the admin holds a role for, the
+// scopable permissions they have there beyond what they hold for the whole
+// panel.
+func (a AdminUser) ScopedPermissions() map[uuid.UUID][]string {
+	scoped := map[uuid.UUID][]string{}
+
+	for _, assignment := range a.Assignments {
+		if assignment.Global() {
+			continue
+		}
+
+		app := *assignment.ApplicationID
+		for _, name := range AdminPermissionNames() {
+			if a.HasPermission(name) || !assignment.Grants(name, &app) {
+				continue
+			}
+			if !slices.Contains(scoped[app], name) {
+				scoped[app] = append(scoped[app], name)
+			}
+		}
+	}
+
+	return scoped
 }

@@ -41,11 +41,20 @@ XERMESS_CORS_ORIGINS=http://a.test, http://b.test
 XERMESS_DB_DSN=postgres://user:pw@localhost:5432/mydb
 XERMESS_DB_LOG_QUERIES=true
 XERMESS_DB_MIGRATE=false
+XERMESS_SECURE_COOKIES=true
+XERMESS_TRUSTED_PROXIES=10.0.0.1, 192.168.0.0/16
 `)
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	if !cfg.SecureCookies {
+		t.Error("SecureCookies = false, want true")
+	}
+	if len(cfg.TrustedProxies) != 2 || cfg.TrustedProxies[1] != "192.168.0.0/16" {
+		t.Errorf("TrustedProxies = %v, want both, trimmed", cfg.TrustedProxies)
 	}
 
 	if cfg.Addr != ":9000" {

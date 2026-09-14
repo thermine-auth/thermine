@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,6 +22,27 @@ import (
 // SessionLifetime is how long a session lasts before the administrator has to
 // sign in again.
 const SessionLifetime = 12 * time.Hour
+
+// MaxFailedLogins wrong passwords in a row lock an account for LockoutDuration.
+// The lock is short on purpose: long enough to make guessing hopeless, not so
+// long that someone else's guessing keeps an administrator out for good.
+const (
+	MaxFailedLogins = 5
+	LockoutDuration = 15 * time.Minute
+)
+
+// dummyHash is compared against when a username does not exist, so that an
+// unknown username takes as long to refuse as a wrong password. It has to be
+// a real hash at the real cost: a malformed one is refused before any hashing
+// is done, which would answer unknown usernames measurably faster.
+var dummyHash = sync.OnceValue(func() []byte {
+	hash, err := bcrypt.GenerateFromPassword([]byte("not a password anyone has"), bcrypt.DefaultCost)
+	if err != nil {
+		panic(fmt.Sprintf("auth: make the dummy hash: %v", err))
+	}
+
+	return hash
+})
 
 // ErrInvalidCredentials is returned for a username that does not exist, a
 // wrong password, and an account that may not sign in. They are one error on
@@ -59,7 +81,7 @@ func (s *Service) Login(ctx context.Context, username, password string, req Requ
 	case errors.Is(err, store.ErrNotFound):
 		// Still hash something, so a missing username and a wrong password
 		// take the same time to answer.
-		_ = bcrypt.CompareHashAndPassword([]byte("$2a$10$"+hex.EncodeToString(make([]byte, 26))), []byte(password))
+		_ = bcrypt.CompareHashAndPassword(dummyHash(), []byte(password))
 		s.record(ctx, nil, username, "admin.login_failed", req, "unknown username")
 		return "", nil, ErrInvalidCredentials
 	case err != nil:
@@ -67,12 +89,27 @@ func (s *Service) Login(ctx context.Context, username, password string, req Requ
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(password)); err != nil {
-		s.record(ctx, &admin.ID, admin.Username, "admin.login_failed", req, "wrong password")
+		locked, err := s.store.RecordFailedLogin(ctx, admin, time.Now(), MaxFailedLogins, LockoutDuration)
+		if err != nil {
+			return "", nil, err
+		}
+
+		reason := "wrong password"
+		if locked {
+			reason = "wrong password; locked after too many attempts"
+		}
+		s.record(ctx, &admin.ID, admin.Username, "admin.login_failed", req, reason)
+
 		return "", nil, ErrInvalidCredentials
 	}
 
 	if !admin.CanSignIn(time.Now()) {
-		s.record(ctx, &admin.ID, admin.Username, "admin.login_blocked", req, string(admin.Status))
+		reason := string(admin.Status)
+		if admin.Status == model.StatusActive {
+			reason = "locked"
+		}
+		s.record(ctx, &admin.ID, admin.Username, "admin.login_blocked", req, reason)
+
 		return "", nil, ErrInvalidCredentials
 	}
 

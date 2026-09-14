@@ -1,0 +1,182 @@
+<script lang="ts">
+	import { resolve } from '$app/paths';
+	import {
+		RiAppsLine,
+		RiFileTextLine,
+		RiGroupLine,
+		RiNodeTree,
+		RiShieldUserLine
+	} from 'svelte-remixicon';
+	import type { Application, Role, UserRoleRef } from '$lib/api';
+	import { Badge, DataTable, Icon, type Column } from '$lib/components/ui';
+
+	type Props = {
+		roles: Role[];
+		/** Adds a column naming each role's application, for a list that mixes
+		    applications. */
+		showApplication?: boolean;
+		/** The applications the administrator can see, to name the scope of a
+		    role included from another scope. */
+		applications: Application[];
+		/** Called with the role whose row was chosen. */
+		onOpen: (role: Role) => void;
+		/** The ids of the ticked rows, and how to say that they changed. Left
+		    out, the rows cannot be ticked. */
+		selected?: string[];
+		onSelect?: (ids: string[]) => void;
+	};
+
+	let {
+		roles,
+		showApplication = false,
+		applications,
+		onOpen,
+		selected,
+		onSelect
+	}: Props = $props();
+
+	/** An included role's name, prefixed with its scope when that is not the
+	    scope of the role it is included in: a global role can include
+	    application roles, and an application role global ones. */
+	function label(included: UserRoleRef, from: Role): string {
+		if (included.application_id === from.application_id) return included.name;
+		if (included.application_id === null) return `Global / ${included.name}`;
+
+		const app = applications.find((it) => it.id === included.application_id);
+		return `${app?.name ?? '?'} / ${included.name}`;
+	}
+
+	const columns = $derived<Column[]>([
+		{ key: 'name', label: 'Role', icon: RiShieldUserLine, min: '12rem' },
+		...(showApplication
+			? [{ key: 'application', label: 'Application', icon: RiAppsLine, min: '10rem' }]
+			: []),
+		{ key: 'description', label: 'Description', icon: RiFileTextLine, min: '16rem' },
+		{ key: 'includes', label: 'Includes', icon: RiNodeTree, min: '12rem' },
+		{ key: 'users', label: 'Users', icon: RiGroupLine, min: '6rem', align: 'end' }
+	]);
+
+	function appName(role: Role): string {
+		return applications.find((app) => app.id === role.application_id)?.name ?? '?';
+	}
+
+	/** How many role names a cell shows before it says "and N more". */
+	const SHOWN = 3;
+
+	/** The users page, filtered to the holders of one role. */
+	function holders(role: Role): string {
+		return `${resolve('/admin/(panel)/dashboard/users')}?role=${role.id}`;
+	}
+</script>
+
+<DataTable
+	{columns}
+	rows={roles}
+	empty="No roles match this."
+	{onOpen}
+	label={(role) => `Edit ${role.name}`}
+	{selected}
+	{onSelect}
+>
+	{#snippet row(role)}
+		<td>
+			<span class="name">{role.name}</span>
+			{#if role.is_default}
+				<Badge tone="success">default</Badge>
+			{/if}
+		</td>
+
+		{#if showApplication}
+			<td>
+				<span class="app">
+					<Icon icon={RiShieldUserLine} size="0.9375rem" />
+					{appName(role)}
+				</span>
+			</td>
+		{/if}
+
+		<td>
+			{#if role.description}
+				<span class="text">{role.description}</span>
+			{:else}
+				<span class="empty">—</span>
+			{/if}
+		</td>
+
+		<!-- Every role holding this one also gives, inheritance followed all the
+		     way down: what a user actually gets. -->
+		<td>
+			<span class="badges">
+				{#each role.inherited_roles.slice(0, SHOWN) as inherited (inherited.id)}
+					<Badge>{label(inherited, role)}</Badge>
+				{:else}
+					<span class="empty">—</span>
+				{/each}
+				{#if role.inherited_roles.length > SHOWN}
+					<span class="more">+{role.inherited_roles.length - SHOWN} more</span>
+				{/if}
+			</span>
+		</td>
+
+		<td class="end">
+			<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+			<a class="count" href={holders(role)} onclick={(event) => event.stopPropagation()}>
+				{role.user_count}
+			</a>
+		</td>
+	{/snippet}
+</DataTable>
+
+<style>
+	.app {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		color: var(--color-text);
+	}
+
+	.name {
+		margin-right: var(--space-1);
+		font-family: var(--font-mono);
+		font-size: var(--text-sm);
+		font-weight: 600;
+	}
+
+	.text {
+		display: inline-block;
+		max-width: 22rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		vertical-align: middle;
+		white-space: nowrap;
+	}
+
+	.badges {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-1);
+	}
+
+	.empty,
+	.more {
+		color: var(--color-text-disabled);
+		font-size: var(--text-sm);
+	}
+
+	.more {
+		color: var(--color-text-hint);
+	}
+
+	.count {
+		color: var(--color-text);
+		font-family: var(--font-mono);
+		font-size: var(--text-sm);
+		text-decoration: underline;
+		text-decoration-color: var(--color-border);
+		text-underline-offset: 3px;
+	}
+
+	.count:hover {
+		text-decoration-color: currentColor;
+	}
+</style>

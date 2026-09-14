@@ -25,6 +25,7 @@ func (s *Store) AuditLog(ctx context.Context, limit int) ([]model.AuditLog, erro
 type Counts struct {
 	Admins         int64 `json:"admins"`
 	ActiveSessions int64 `json:"active_sessions"`
+	Applications   int64 `json:"applications"`
 	Roles          int64 `json:"roles"`
 	Events         int64 `json:"events"`
 }
@@ -44,6 +45,10 @@ func (s *Store) Counts(ctx context.Context, now time.Time) (Counts, error) {
 		Where("revoked_at IS NULL AND expires_at > ?", now).
 		Count(&counts.ActiveSessions).Error
 	if err != nil {
+		return counts, err
+	}
+
+	if err := db.Model(&model.Application{}).Count(&counts.Applications).Error; err != nil {
 		return counts, err
 	}
 

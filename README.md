@@ -46,7 +46,7 @@ Run `make` on its own for the full list, grouped by what it is for:
 | Getting started | `setup`, `env`, `deps`                                                 |
 | Development     | `run`, `run-migrate`, `build`, `release`, `clean`                      |
 | Database        | `migrate-up`, `migrate-down`, `migrate-status`, `migrate-new name=x`, `db-create`, `db-reset`, `db-psql` |
-| Quality         | `check` (fmt + vet + test), `fmt`, `vet`, `test`, `tidy`               |
+| Quality         | `check` (fmt + vet + test), `fmt`, `vet`, `test`, `test-integration`, `tidy` |
 | Container       | `docker-build`, `docker-run`                                           |
 | Frontend        | `web-install`, `web-dev`, `web-build`, `web-start`                     |
 
@@ -62,15 +62,19 @@ internal/database/migrate.go   applies migrations
 internal/store/                every query in the project, one file per subject
 internal/auth/auth.go          signs administrators in and out, records what they do
 internal/api/server.go         the engine, and the table of every route
-internal/api/http/auth/        signing in and out, and who is signed in
-internal/api/http/users/       the users an organisation manages
-internal/api/http/fields/      the fields a user record is made of
-internal/api/http/activity/    the dashboard counts and the log
-internal/api/http/middleware/  request logging, recovery, and their order
-internal/api/http/cors/        which browser origins may call the API
-internal/api/http/session/     the cookie, the session check, the current admin
-internal/api/http/respond/     how an error is written, once for every endpoint
-internal/api/http/audit/       recording what an administrator did
+internal/api/auth/             signing in and out, and who is signed in
+internal/api/users/            the users an organisation manages
+internal/api/fields/           the fields a user record is made of
+internal/api/applications/     OAuth 2.0 / OIDC clients: settings, secrets
+internal/api/roles/            the roles users hold in each application
+internal/api/admins/           administrators, managed by a super admin
+internal/api/adminroles/       admin roles and the permissions they grant
+internal/api/activity/         the dashboard counts and the log
+internal/api/middleware/       request logging, recovery, and their order
+internal/api/cors/             which browser origins may call the API
+internal/api/session/          the cookie, the session check, the current admin
+internal/api/respond/          how an error is written, once for every endpoint
+internal/api/audit/            recording what an administrator did
 internal/model/                one file per table, listed in model.All
 
 migrations/                    one Go file per migration, applied in order
@@ -105,10 +109,10 @@ Handlers are grouped by subject, and every group is the same four files, so a
 package you have never opened is laid out like the last one you did:
 
 ```
-internal/api/http/users/handler.go     the endpoints: what happens, in order
-internal/api/http/users/request.go     the bodies and query strings it accepts
-internal/api/http/users/response.go    the shapes it answers with
-internal/api/http/users/validation.go  the rules a request has to keep
+internal/api/users/handler.go     the endpoints: what happens, in order
+internal/api/users/request.go     the bodies and query strings it accepts
+internal/api/users/response.go    the shapes it answers with
+internal/api/users/validation.go  the rules a request has to keep
 ```
 
 A handler reads a request, asks the store, and answers. Nothing else: the
@@ -196,7 +200,7 @@ SHA-256 hash of it, so a leaked database cannot be signed in with. They last
 `audit_logs`.
 
 To add an endpoint: write the handler method in the package it belongs to
-under `internal/api/http/`, then mount it in `registerRoutes` in
+under `internal/api/`, then mount it in `registerRoutes` in
 `internal/api/server.go` — the one place that says which paths exist. Put it
 behind `session.Require` unless it is meant to be public.
 
@@ -425,8 +429,14 @@ characters, makes a `super_admin` with them, and signs that person in.
 
 `POST /api/v1/admin/setup` is the one open route that writes anything, so it
 is worth knowing why that is safe: the check for existing administrators and
-the insert are one transaction, and it refuses with a 409 the moment there is
-one. It is a door that closes behind the first person through it.
+the insert are one transaction holding a lock, so two requests at once cannot
+both get in, and it refuses with a 409 the moment there is one. It is a door
+that closes behind the first person through it.
+
+Signing in is refused for 15 minutes after five wrong passwords in a row; a
+super admin setting a new password for the account unlocks it. An unknown
+username takes as long to refuse as a wrong password, so the answer does not
+say which usernames exist.
 
 The address is the account — it is both the email and the username someone
 signs in with, so setup asks for one thing rather than two.
@@ -436,6 +446,18 @@ signs in with, so setup asks for one thing rather than two.
 Every setting is an environment variable, read from `.env` first; real
 environment variables win. `.env.example` lists all of them. `XERMESS_DB_DSN`
 has no default, so a missing one stops the server.
+
+Two settings matter as soon as the API leaves a developer's machine:
+`XERMESS_SECURE_COOKIES=true` sends the session cookie over HTTPS only, and
+`XERMESS_TRUSTED_PROXIES` lists the reverse proxies whose `X-Forwarded-For`
+is believed. With none listed, the address recorded for every request is the
+connection's own, so a caller cannot write a made-up one into the activity
+log.
+
+`make test-integration` runs the tests that need Postgres. They connect to
+the server in `.env` only to create a database of their own for each test,
+and drop it afterwards; without `XERMESS_TEST_DB_DSN` set, `go test` skips
+them.
 
 The `migrations/` directory has to ship with the binary: goose reads the file
 names from disk, at the path in `XERMESS_DB_MIGRATE_DIR`, and matches them to

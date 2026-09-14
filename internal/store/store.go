@@ -52,3 +52,13 @@ func translate(err error) error {
 		return err
 	}
 }
+
+// likeEscaper escapes what LIKE treats specially, so a search for "50%" or
+// "first_name" finds those characters rather than matching anything.
+var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+
+// contains is the LIKE pattern for a case-insensitive search: the value, lower
+// cased and escaped, anywhere in the column. Compare it against LOWER(column).
+func contains(search string) string {
+	return "%" + likeEscaper.Replace(strings.ToLower(search)) + "%"
+}

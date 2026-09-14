@@ -1,5 +1,11 @@
 <script lang="ts">
-	import { RiAdminLine, RiComputerLine, RiHistoryLine, RiShieldUserLine } from 'svelte-remixicon';
+	import {
+		RiAdminLine,
+		RiAppsLine,
+		RiComputerLine,
+		RiHistoryLine,
+		RiShieldUserLine
+	} from 'svelte-remixicon';
 	import ActivityTable from '$lib/components/activity/ActivityTable.svelte';
 	import SessionTable from '$lib/components/profile/SessionTable.svelte';
 	import StatGrid from '$lib/components/activity/StatGrid.svelte';
@@ -7,16 +13,25 @@
 
 	let { data }: { data: PageData } = $props();
 
-	const stats = $derived([
-		{ label: 'Administrators', value: data.overview.counts.admins, icon: RiAdminLine },
-		{
-			label: 'Active sessions',
-			value: data.overview.counts.active_sessions,
-			icon: RiComputerLine
-		},
-		{ label: 'Roles', value: data.overview.counts.roles, icon: RiShieldUserLine },
-		{ label: 'Logged events', value: data.overview.counts.events, icon: RiHistoryLine }
-	]);
+	const stats = $derived(
+		data.overview
+			? [
+					{ label: 'Administrators', value: data.overview.counts.admins, icon: RiAdminLine },
+					{
+						label: 'Active sessions',
+						value: data.overview.counts.active_sessions,
+						icon: RiComputerLine
+					},
+					{
+						label: 'Applications',
+						value: data.overview.counts.applications,
+						icon: RiAppsLine
+					},
+					{ label: 'Admin roles', value: data.overview.counts.roles, icon: RiShieldUserLine },
+					{ label: 'Logged events', value: data.overview.counts.events, icon: RiHistoryLine }
+				]
+			: []
+	);
 </script>
 
 <svelte:head>
@@ -25,17 +40,23 @@
 
 <h1>Activity</h1>
 <p class="subtitle">
-	Signed in as {data.admin.full_name} ({data.admin.roles.join(', ')})
+	Signed in as {data.admin.full_name}{data.admin.roles.length > 0
+		? ` (${data.admin.roles.join(', ')})`
+		: ''}
 </p>
 
-<section>
-	<StatGrid {stats} />
-</section>
+{#if data.overview}
+	<section>
+		<StatGrid {stats} />
+	</section>
 
-<section>
-	<h2>Recent activity</h2>
-	<ActivityTable events={data.overview.activity} />
-</section>
+	<section>
+		<h2>Recent activity</h2>
+		<ActivityTable events={data.overview.activity} />
+	</section>
+{:else}
+	<p class="note">Your roles do not include reading activity, so there is nothing to show here.</p>
+{/if}
 
 <section>
 	<h2>Your sessions</h2>
@@ -48,6 +69,11 @@
 		padding-inline: var(--page-gutter);
 		color: var(--color-text-hint);
 		font-size: var(--text-base);
+	}
+
+	.note {
+		padding-inline: var(--page-gutter);
+		color: var(--color-text-hint);
 	}
 
 	section + section {

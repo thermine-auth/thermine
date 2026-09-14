@@ -8,86 +8,6 @@
 
 type Status = 'active' | 'disabled' | 'draft';
 
-export type DemoApplication = {
-	id: string;
-	name: string;
-	kind: string;
-	clientId: string;
-	users: number;
-	status: Status;
-};
-
-export const demoApplications: DemoApplication[] = [
-	{
-		id: 'app1',
-		name: 'Customer portal',
-		kind: 'Single page app',
-		clientId: 'xm_c7f2a9',
-		users: 18420,
-		status: 'active'
-	},
-	{
-		id: 'app2',
-		name: 'Mobile app',
-		kind: 'Native',
-		clientId: 'xm_2b91de',
-		users: 9037,
-		status: 'active'
-	},
-	{
-		id: 'app3',
-		name: 'Back office',
-		kind: 'Regular web app',
-		clientId: 'xm_44ac10',
-		users: 126,
-		status: 'active'
-	},
-	{
-		id: 'app4',
-		name: 'Partner sandbox',
-		kind: 'Machine to machine',
-		clientId: 'xm_9f0b77',
-		users: 0,
-		status: 'draft'
-	}
-];
-
-export type DemoApi = {
-	id: string;
-	name: string;
-	identifier: string;
-	scopes: number;
-	tokenLifetime: string;
-	status: Status;
-};
-
-export const demoApis: DemoApi[] = [
-	{
-		id: 'api1',
-		name: 'Accounts API',
-		identifier: 'https://api.xermess.dev/accounts',
-		scopes: 14,
-		tokenLifetime: '1 hour',
-		status: 'active'
-	},
-	{
-		id: 'api2',
-		name: 'Billing API',
-		identifier: 'https://api.xermess.dev/billing',
-		scopes: 8,
-		tokenLifetime: '30 minutes',
-		status: 'active'
-	},
-	{
-		id: 'api3',
-		name: 'Reporting API',
-		identifier: 'https://api.xermess.dev/reports',
-		scopes: 3,
-		tokenLifetime: '12 hours',
-		status: 'disabled'
-	}
-];
-
 export type DemoSso = {
 	id: string;
 	name: string;
@@ -274,45 +194,6 @@ export const demoUsers: DemoUser[] = [
 		connection: 'GitHub',
 		lastLogin: '3 weeks ago',
 		status: 'blocked'
-	}
-];
-
-export type DemoRole = {
-	id: string;
-	name: string;
-	description: string;
-	permissions: number;
-	members: number;
-};
-
-export const demoRoles: DemoRole[] = [
-	{
-		id: 'r1',
-		name: 'owner',
-		description: 'Everything, including billing and other owners',
-		permissions: 42,
-		members: 2
-	},
-	{
-		id: 'r2',
-		name: 'administrator',
-		description: 'Applications, connections and users',
-		permissions: 31,
-		members: 5
-	},
-	{
-		id: 'r3',
-		name: 'support',
-		description: 'Read users and reset their passwords',
-		permissions: 9,
-		members: 12
-	},
-	{
-		id: 'r4',
-		name: 'auditor',
-		description: 'Read only, including the activity log',
-		permissions: 6,
-		members: 3
 	}
 ];
 

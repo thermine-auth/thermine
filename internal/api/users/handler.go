@@ -1,0 +1,453 @@
+// Package users answers the endpoints for the people an organisation manages:
+// the records themselves, as opposed to the administrators who edit them.
+package users
+
+import (
+	"errors"
+	"log/slog"
+	"net/http"
+	"slices"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+
+	"xermess/internal/api/audit"
+	"xermess/internal/api/respond"
+	"xermess/internal/api/session"
+	"xermess/internal/api/validate"
+	"xermess/internal/model"
+	"xermess/internal/store"
+)
+
+// Handler holds what these endpoints need.
+type Handler struct {
+	store *store.Store
+	audit audit.Recorder
+	log   *slog.Logger
+}
+
+// New returns a Handler.
+func New(st *store.Store, recorder audit.Recorder, log *slog.Logger) *Handler {
+	return &Handler{store: st, audit: recorder, log: log}
+}
+
+// List returns a page of users, newest first.
+//
+// `search` matches the email or any text the user-defined fields hold, so one
+// box covers the whole record rather than one column.
+func (h *Handler) List(c *gin.Context) {
+	ctx := c.Request.Context()
+	query := listQuery(c)
+
+	// Filtering by a role says who holds it, which is the role's scope's
+	// business: a role the administrator cannot see is not found.
+	if query.Role != nil {
+		role, err := h.store.UserRole(ctx, *query.Role)
+		if errors.Is(err, store.ErrNotFound) || err == nil && !session.SeesRole(c, *role) {
+			respond.NotFound(c, "no such role")
+			return
+		}
+		if err != nil {
+			respond.Failure(c, h.log, err, "loading the role to filter by failed")
+			return
+		}
+	}
+
+	users, total, err := h.store.Users(ctx, query)
+	if err != nil {
+		respond.Failure(c, h.log, err, "listing users failed")
+		return
+	}
+
+	for i := range users {
+		visibleRoles(c, &users[i])
+	}
+
+	c.JSON(http.StatusOK, newPageResponse(users, total, query))
+}
+
+// Get returns one user.
+func (h *Handler) Get(c *gin.Context) {
+	user, ok := h.find(c)
+	if !ok {
+		return
+	}
+
+	visibleRoles(c, user)
+
+	c.JSON(http.StatusOK, gin.H{"user": user})
+}
+
+// Create adds a user.
+func (h *Handler) Create(c *gin.Context) {
+	var req userRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respond.BadRequest(c, "the request body is not valid")
+		return
+	}
+
+	user, err := h.build(c, &req, nil)
+	if err != nil {
+		respond.Failure(c, h.log, err, "checking a user failed")
+		return
+	}
+
+	if err := h.store.CreateUser(c.Request.Context(), user); err != nil {
+		h.respondWrite(c, err, "creating user failed")
+		return
+	}
+
+	h.audit.Record(c, "user.created", targetType, user.ID.String())
+
+	visibleRoles(c, user)
+
+	c.JSON(http.StatusCreated, gin.H{"user": user})
+}
+
+// Update replaces a user's email, verified flag and fields, and the password
+// too when a new one is given.
+func (h *Handler) Update(c *gin.Context) {
+	user, ok := h.find(c)
+	if !ok {
+		return
+	}
+
+	var req userRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respond.BadRequest(c, "the request body is not valid")
+		return
+	}
+
+	if _, err := h.build(c, &req, user); err != nil {
+		respond.Failure(c, h.log, err, "checking a user failed")
+		return
+	}
+
+	if err := h.store.SaveUser(c.Request.Context(), user); err != nil {
+		h.respondWrite(c, err, "updating user failed")
+		return
+	}
+
+	h.audit.Record(c, "user.updated", targetType, user.ID.String())
+	if req.Password != "" {
+		h.audit.Record(c, "user.password_changed", targetType, user.ID.String())
+	}
+
+	visibleRoles(c, user)
+
+	c.JSON(http.StatusOK, gin.H{"user": user})
+}
+
+// Roles returns the roles a user holds as a token would carry them: the
+// global roles, and for each application its roles — each as the ones given
+// directly and every role those include.
+//
+// The client_id query parameter narrows the applications to one. Applications
+// the administrator cannot see are left out.
+func (h *Handler) Roles(c *gin.Context) {
+	user, ok := h.find(c)
+	if !ok {
+		return
+	}
+
+	apps, graph, ok := h.roleContext(c)
+	if !ok {
+		return
+	}
+
+	if clientID := c.Query("client_id"); clientID != "" {
+		apps = slices.DeleteFunc(apps, func(app model.Application) bool { return app.ClientID != clientID })
+
+		if len(apps) == 0 {
+			respond.NotFound(c, "no such application")
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, newRolesResponse(user, apps, graph))
+}
+
+// RoleMappings returns every role a user holds, Keycloak's role mapping: the
+// roles given directly, and the roles that come to the user through them,
+// each with what it comes through. Roles of applications the administrator
+// cannot see are left out.
+func (h *Handler) RoleMappings(c *gin.Context) {
+	user, ok := h.find(c)
+	if !ok {
+		return
+	}
+
+	apps, graph, ok := h.roleContext(c)
+	if !ok {
+		return
+	}
+
+	c.JSON(http.StatusOK, newMappingsResponse(user, apps, graph, func(role model.UserRole) bool {
+		return session.SeesRole(c, role)
+	}))
+}
+
+// AssignRoles gives a user roles directly, global and application roles
+// alike, leaving what they already hold as it is. Each role is allowed by its
+// scope: role_assignments.write for its application, or for the whole panel
+// when it is global. One refused role refuses the whole request.
+func (h *Handler) AssignRoles(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	var req assignRequest
+	if err := c.ShouldBindJSON(&req); err != nil || len(req.Roles) == 0 {
+		respond.BadRequest(c, "roles: name at least one role to assign")
+		return
+	}
+
+	user, ok := h.find(c)
+	if !ok {
+		return
+	}
+
+	roles, err := h.store.UserRolesByID(ctx, req.Roles)
+	if errors.Is(err, store.ErrNotFound) {
+		respond.BadRequest(c, "roles: one of them does not exist")
+		return
+	}
+	if err != nil {
+		respond.Failure(c, h.log, err, "loading roles failed")
+		return
+	}
+
+	for _, role := range roles {
+		if !session.SeesRole(c, role) {
+			respond.BadRequest(c, "roles: one of them does not exist")
+			return
+		}
+
+		if !session.AllowedScope(c, model.PermRoleAssignmentsWrite, role.ApplicationID) {
+			respond.Failure(c, h.log, respond.Forbidden, "")
+			return
+		}
+	}
+
+	if err := h.store.AddUserRoles(ctx, user.ID, roles); err != nil {
+		respond.Failure(c, h.log, err, "assigning roles failed")
+		return
+	}
+
+	h.audit.Record(c, "user.roles_assigned", targetType, user.ID.String())
+
+	h.RoleMappings(c)
+}
+
+// UnassignRole takes away a role the user was given directly. A role that
+// only comes to the user through another cannot be taken away on its own:
+// the role it comes through has to go.
+func (h *Handler) UnassignRole(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	roleID, err := uuid.Parse(c.Param("role"))
+	if err != nil {
+		respond.BadRequest(c, "that is not a role id")
+		return
+	}
+
+	user, ok := h.find(c)
+	if !ok {
+		return
+	}
+
+	role, err := h.store.UserRole(ctx, roleID)
+	switch {
+	case errors.Is(err, store.ErrNotFound), err == nil && !session.SeesRole(c, *role):
+		respond.NotFound(c, "no such role")
+		return
+	case err != nil:
+		respond.Failure(c, h.log, err, "loading role failed")
+		return
+	case !session.AllowedScope(c, model.PermRoleAssignmentsWrite, role.ApplicationID):
+		respond.Failure(c, h.log, respond.Forbidden, "")
+		return
+	}
+
+	if !slices.ContainsFunc(user.Roles, func(held model.UserRole) bool { return held.ID == role.ID }) {
+		respond.NotFound(c, "the user was not given that role directly")
+		return
+	}
+
+	if err := h.store.RemoveUserRole(ctx, user.ID, role.ID); err != nil {
+		respond.Failure(c, h.log, err, "unassigning role failed")
+		return
+	}
+
+	h.audit.Record(c, "user.role_unassigned", targetType, user.ID.String())
+
+	h.RoleMappings(c)
+}
+
+// roleContext loads what describing a user's roles needs: the applications
+// the administrator can see, and the whole role graph.
+func (h *Handler) roleContext(c *gin.Context) ([]model.Application, model.RoleGraph, bool) {
+	ctx := c.Request.Context()
+
+	apps, _, err := h.store.Applications(ctx, store.ApplicationQuery{
+		Only:  session.Reach(c, model.PermApplicationsRead),
+		Limit: maxApplications,
+	})
+	if err != nil {
+		respond.Failure(c, h.log, err, "listing applications failed")
+		return nil, nil, false
+	}
+
+	graph, err := h.store.RoleGraph(ctx)
+	if err != nil {
+		respond.Failure(c, h.log, err, "resolving roles failed")
+		return nil, nil, false
+	}
+
+	return apps, graph, true
+}
+
+// Delete removes a user for good.
+func (h *Handler) Delete(c *gin.Context) {
+	user, ok := h.find(c)
+	if !ok {
+		return
+	}
+
+	if err := h.store.DeleteUser(c.Request.Context(), user); err != nil {
+		respond.Failure(c, h.log, err, "deleting user failed")
+		return
+	}
+
+	h.audit.Record(c, "user.deleted", targetType, user.ID.String())
+
+	c.Status(http.StatusNoContent)
+}
+
+// build checks a submitted record and returns the user to write. Passing an
+// existing user fills that one in instead of making a new one, and keeps a
+// unique field from clashing with the record's own value.
+func (h *Handler) build(c *gin.Context, req *userRequest, into *model.User) (*model.User, error) {
+	ctx := c.Request.Context()
+
+	if err := req.validate(into == nil); err != nil {
+		return nil, err
+	}
+
+	fields, err := h.store.UserFields(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	self := uuid.Nil
+	if into != nil {
+		self = into.ID
+	}
+
+	data, err := normalise(ctx, h.store, fields, req.Data, self)
+	if err != nil {
+		return nil, err
+	}
+
+	user := into
+	if user == nil {
+		user = &model.User{IsActive: true}
+	}
+
+	user.Email = req.Email
+	user.EmailVerified = validate.Flag(req.EmailVerified, user.EmailVerified)
+	user.FirstName = req.FirstName
+	user.LastName = req.LastName
+	user.IsActive = validate.Flag(req.IsActive, user.IsActive)
+	user.Data = data
+
+	if err := setPassword(user, req); err != nil {
+		return nil, err
+	}
+
+	if into == nil {
+		// A new user gets the default global roles and every enabled
+		// application's default roles, so they can sign in straight away.
+		// Any other role is given afterwards, through the role mappings.
+		roles, err := h.store.DefaultUserRoles(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		user.Roles = roles
+	}
+
+	return user, nil
+}
+
+// setPassword applies the password part of a request: a new password when one
+// was given, and whether the password the user ends up with is temporary.
+// An empty password on an update keeps the one the user has, so an
+// administrator can mark it temporary, or not, without having to replace it.
+func setPassword(user *model.User, req *userRequest) error {
+	if req.Password != "" {
+		err := user.SetPassword(req.Password)
+		if errors.Is(err, model.ErrPasswordTooLong) {
+			return respond.Fault{Status: http.StatusBadRequest, Message: err.Error()}
+		}
+		if err != nil {
+			return err
+		}
+	}
+
+	temporary := validate.Flag(req.IsTemporaryPassword, user.IsTemporaryPassword)
+
+	if temporary && !user.HasPassword {
+		return respond.Fault{
+			Status:  http.StatusBadRequest,
+			Message: "is_temporary_password needs a password to be set",
+		}
+	}
+
+	user.IsTemporaryPassword = temporary
+
+	return nil
+}
+
+// visibleRoles leaves only the roles the administrator can see on a user
+// about to be answered with.
+func visibleRoles(c *gin.Context, user *model.User) {
+	user.Roles = slices.DeleteFunc(user.Roles, func(role model.UserRole) bool {
+		return !session.SeesRole(c, role)
+	})
+}
+
+// find loads the user named in the path, answering the request itself if the
+// id is not a uuid or there is no such user.
+func (h *Handler) find(c *gin.Context) (*model.User, bool) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respond.BadRequest(c, "that is not a user id")
+		return nil, false
+	}
+
+	user, err := h.store.User(c.Request.Context(), id)
+
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		respond.NotFound(c, "no such user")
+		return nil, false
+	case err != nil:
+		respond.Failure(c, h.log, err, "loading user failed")
+		return nil, false
+	}
+
+	return user, true
+}
+
+// respondWrite turns a failed write into an answer, telling a duplicate email
+// apart from anything else because that one is the writer's to fix. The
+// address is the only column of a user record that has to be unique; an
+// additional field that has to be is checked before the write, in
+// validation.go.
+func (h *Handler) respondWrite(c *gin.Context, err error, note string) {
+	if errors.Is(err, store.ErrDuplicate) {
+		respond.Conflict(c, "a user with that email already exists")
+		return
+	}
+
+	respond.Failure(c, h.log, err, note)
+}

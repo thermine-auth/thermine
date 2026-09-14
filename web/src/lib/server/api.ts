@@ -2,7 +2,9 @@ import { error, redirect, type Cookies } from '@sveltejs/kit';
 import { resolve } from '$app/paths';
 import { PUBLIC_API_URL } from '$env/static/public';
 
+import type { Admin, AdminPermissionName } from '$lib/api';
 import { COOKIES } from '$lib/constants';
+import { can, canAnywhere } from '$lib/permissions';
 
 /**
  * Calls the API as the administrator making this request.
@@ -37,6 +39,10 @@ export async function apiGet<T>(
 
 	if (response.status === 401) {
 		redirect(307, resolve('/admin/login'));
+	}
+
+	if (response.status === 403) {
+		error(403, 'Your roles do not allow you to see this page.');
 	}
 
 	if (!response.ok) {
@@ -77,4 +83,31 @@ export async function hasSession(
 	const response = await call('/admin/me', cookies, fetch);
 
 	return response.ok;
+}
+
+/**
+ * Stops a page load for an administrator whose roles do not allow the page,
+ * before it asks the API for anything it would only refuse. Pass
+ * 'super_admin' for the pages that only a super admin may open.
+ */
+export function requirePermission(
+	admin: Admin,
+	permission: AdminPermissionName | 'super_admin'
+): void {
+	const allowed = permission === 'super_admin' ? admin.is_super_admin : can(admin, permission);
+
+	if (!allowed) {
+		error(403, 'Your roles do not allow you to see this page.');
+	}
+}
+
+/**
+ * Stops a page load unless the administrator holds the permission for the
+ * whole panel or for at least one application: the pages whose lists are
+ * narrowed to the applications an administrator's roles reach.
+ */
+export function requireAnywhere(admin: Admin, permission: AdminPermissionName): void {
+	if (!canAnywhere(admin, permission)) {
+		error(403, 'Your roles do not allow you to see this page.');
+	}
 }

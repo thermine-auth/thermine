@@ -174,6 +174,10 @@
 		gap: var(--space-2);
 	}
 
+	th.end .label {
+		justify-content: flex-end;
+	}
+
 	th.end,
 	table :global(td.end) {
 		text-align: right;

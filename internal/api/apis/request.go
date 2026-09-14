@@ -1,0 +1,63 @@
+package apis
+
+import (
+	"strings"
+
+	"github.com/google/uuid"
+
+	"xermess/internal/model"
+)
+
+// maxLogEntries caps how many log entries one request returns.
+const maxLogEntries = 100
+
+// targetType is what these records are called in the activity log.
+const targetType = "api"
+
+// maxScopes caps how many scopes one API may have.
+const maxScopes = 200
+
+// apiRequest is the body of the create and update endpoints. The scopes
+// replace the API's: a scope sent with its id is kept, with every allowance
+// and grant of it; one sent without is new; one left out is removed.
+type apiRequest struct {
+	Name        string `json:"name" validate:"required,max=100"`
+	Identifier  string `json:"identifier" validate:"max=255"`
+	Description string `json:"description" validate:"max=255"`
+	// EnforceRoles and AllowOfflineAccess may be left out: a new API then
+	// enforces roles and refuses refresh tokens; an existing one keeps them.
+	EnforceRoles *bool `json:"enforce_roles"`
+
+	// SigningAlgorithm left empty is RS256. TokenLifetime is in seconds, and
+	// zero leaves it to each application.
+	SigningAlgorithm   string `json:"signing_algorithm"`
+	TokenLifetime      int    `json:"token_lifetime"`
+	AllowOfflineAccess *bool  `json:"allow_offline_access"`
+
+	Scopes []scopeRequest `json:"scopes" validate:"dive"`
+}
+
+// scopeRequest is one scope of an API.
+type scopeRequest struct {
+	ID          uuid.UUID `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	Default     bool      `json:"default"`
+}
+
+// clean tidies what can be tidied, so the rules see the values that would
+// actually be stored.
+func (r *apiRequest) clean() {
+	r.Name = strings.TrimSpace(r.Name)
+	r.Identifier = strings.TrimSpace(r.Identifier)
+	r.Description = strings.TrimSpace(r.Description)
+	r.SigningAlgorithm = strings.ToUpper(strings.TrimSpace(r.SigningAlgorithm))
+	if r.SigningAlgorithm == "" {
+		r.SigningAlgorithm = model.AlgRS256
+	}
+
+	for i := range r.Scopes {
+		r.Scopes[i].Name = strings.ToLower(strings.TrimSpace(r.Scopes[i].Name))
+		r.Scopes[i].Description = strings.TrimSpace(r.Scopes[i].Description)
+	}
+}

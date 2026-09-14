@@ -4,6 +4,7 @@
 	import type { RouteId } from '$app/types';
 	import type { ComponentType } from 'svelte';
 	import {
+		RiAdminLine,
 		RiAppsLine,
 		RiBuildingLine,
 		RiCodeBoxLine,
@@ -13,12 +14,18 @@
 		RiLinksLine,
 		RiPulseLine,
 		RiShareLine,
+		RiShieldKeyholeLine,
 		RiShieldUserLine,
 		RiSidebarFoldLine,
 		RiSidebarUnfoldLine,
 		RiTranslate2
 	} from 'svelte-remixicon';
+	import type { Admin } from '$lib/api';
 	import { Icon, Tooltip } from '$lib/components/ui';
+	import { can, canAnywhere } from '$lib/permissions';
+
+	/** A page the sidebar can lead to: one with no parameters to fill in. */
+	type Section = Exclude<RouteId, `${string}[${string}`>;
 
 	type Props = {
 		/** Folded to icons only. The width itself is set by the layout. */
@@ -29,11 +36,14 @@
 	let { collapsed, onToggle }: Props = $props();
 
 	type Item = {
-		route: RouteId;
+		route: Section;
 		label: string;
 		icon: ComponentType;
 		/** Marks a section that is still placeholder data. */
 		demo?: boolean;
+		/** Whether the signed-in administrator may open it. Left out, anyone
+		    may. */
+		allowed?: (admin: Admin) => boolean;
 	};
 
 	/** A group with no label is a section on its own, shown above the rest. */
@@ -41,7 +51,14 @@
 
 	const groups: Group[] = [
 		{
-			items: [{ route: '/admin/(panel)/dashboard', label: 'Activity', icon: RiPulseLine }]
+			items: [
+				{
+					route: '/admin/(panel)/dashboard',
+					label: 'Activity',
+					icon: RiPulseLine,
+					allowed: (admin) => can(admin, 'activity.read')
+				}
+			]
 		},
 		{
 			label: 'Applications',
@@ -50,9 +67,14 @@
 					route: '/admin/(panel)/dashboard/applications',
 					label: 'Applications',
 					icon: RiAppsLine,
-					demo: true
+					allowed: (admin) => canAnywhere(admin, 'applications.read')
 				},
-				{ route: '/admin/(panel)/dashboard/apis', label: 'APIs', icon: RiCodeBoxLine, demo: true },
+				{
+					route: '/admin/(panel)/dashboard/apis',
+					label: 'APIs',
+					icon: RiCodeBoxLine,
+					allowed: (admin) => can(admin, 'apis.read')
+				},
 				{
 					route: '/admin/(panel)/dashboard/sso',
 					label: 'SSO integrations',
@@ -87,12 +109,35 @@
 		{
 			label: 'User management',
 			items: [
-				{ route: '/admin/(panel)/dashboard/users', label: 'Users', icon: RiGroupLine },
+				{
+					route: '/admin/(panel)/dashboard/users',
+					label: 'Users',
+					icon: RiGroupLine,
+					allowed: (admin) => can(admin, 'users.read')
+				},
 				{
 					route: '/admin/(panel)/dashboard/roles',
 					label: 'Roles',
 					icon: RiShieldUserLine,
-					demo: true
+					allowed: (admin) =>
+						canAnywhere(admin, 'users.read') || canAnywhere(admin, 'applications.read')
+				}
+			]
+		},
+		{
+			label: 'Administration',
+			items: [
+				{
+					route: '/admin/(panel)/dashboard/admins',
+					label: 'Administrators',
+					icon: RiAdminLine,
+					allowed: (admin) => admin.is_super_admin
+				},
+				{
+					route: '/admin/(panel)/dashboard/admin-roles',
+					label: 'Admin roles',
+					icon: RiShieldKeyholeLine,
+					allowed: (admin) => admin.is_super_admin
 				}
 			]
 		},
@@ -115,9 +160,22 @@
 		}
 	];
 
+	/** The groups as this administrator sees them: what their roles do not
+	    allow is left out, and a group left empty goes with it. */
+	const visible = $derived.by(() => {
+		const admin = page.data.admin as Admin | undefined;
+
+		return groups
+			.map((group) => ({
+				...group,
+				items: group.items.filter((item) => !item.allowed || (admin && item.allowed(admin)))
+			}))
+			.filter((group) => group.items.length > 0);
+	});
+
 	/** Activity is the section's own page, so it only matches exactly; the
 	    others also match anything below them. */
-	function isCurrent(route: RouteId): boolean {
+	function isCurrent(route: Section): boolean {
 		const href = resolve(route);
 		const path = page.url.pathname;
 
@@ -129,7 +187,7 @@
 
 <aside class:mini={collapsed}>
 	<nav aria-label="Sections">
-		{#each groups as group (group.label ?? 'top')}
+		{#each visible as group (group.label ?? 'top')}
 			<div class="group">
 				{#if group.label}
 					<h2>{group.label}</h2>

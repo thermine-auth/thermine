@@ -2,22 +2,6 @@ package model
 
 import "testing"
 
-func TestRoleNameValid(t *testing.T) {
-	valid := []RoleName{RoleSuperAdmin, RoleAdmin, RoleSupport, RoleAuditor}
-	for _, role := range valid {
-		if !role.Valid() {
-			t.Errorf("%s.Valid() = false, want true", role)
-		}
-	}
-
-	invalid := []RoleName{"", "Admin", "root", "super admin"}
-	for _, role := range invalid {
-		if role.Valid() {
-			t.Errorf("%q.Valid() = true, want false", role)
-		}
-	}
-}
-
 func TestStatusValid(t *testing.T) {
 	valid := []Status{StatusInvited, StatusActive, StatusSuspended, StatusDisabled}
 	for _, status := range valid {

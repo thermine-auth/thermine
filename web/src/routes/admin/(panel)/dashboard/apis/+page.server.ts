@@ -1,0 +1,15 @@
+import type { API } from '$lib/api';
+import { apiGet, requireAnywhere } from '$lib/server/api';
+import type { PageServerLoad } from './$types';
+
+/** The resource servers tokens are issued for. The search lives in the URL. */
+export const load: PageServerLoad = async ({ cookies, fetch, parent, url }) => {
+	requireAnywhere((await parent()).admin, 'apis.read');
+
+	const search = url.searchParams.get('search')?.trim() ?? '';
+	const query = search ? `?search=${encodeURIComponent(search)}` : '';
+
+	const { apis } = await apiGet<{ apis: API[] }>(`/admin/apis${query}`, cookies, fetch);
+
+	return { apis, search };
+};

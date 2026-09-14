@@ -1,0 +1,169 @@
+package applications
+
+import (
+	"slices"
+	"time"
+
+	"github.com/google/uuid"
+
+	"xermess/internal/model"
+	"xermess/internal/store"
+)
+
+// applicationResponse is an application as the panel sees it. The secret's
+// hash is never part of it.
+type applicationResponse struct {
+	ID          uuid.UUID             `json:"id"`
+	Name        string                `json:"name"`
+	Description string                `json:"description"`
+	Type        model.ApplicationType `json:"type"`
+	LogoURI     string                `json:"logo_uri"`
+	ClientURI   string                `json:"client_uri"`
+
+	ClientID         string     `json:"client_id"`
+	ClientIDIssuedAt int64      `json:"client_id_issued_at"`
+	HasSecret        bool       `json:"has_secret"`
+	SecretHint       string     `json:"secret_hint"`
+	SecretCreatedAt  *time.Time `json:"secret_created_at"`
+
+	TokenEndpointAuthMethod model.AuthMethod `json:"token_endpoint_auth_method"`
+	GrantTypes              []string         `json:"grant_types"`
+	ResponseTypes           []string         `json:"response_types"`
+	RedirectURIs            []string         `json:"redirect_uris"`
+	PostLogoutRedirectURIs  []string         `json:"post_logout_redirect_uris"`
+	Scopes                  []string         `json:"scopes"`
+	RequirePKCE             bool             `json:"require_pkce"`
+
+	AccessTokenLifetime  int `json:"access_token_lifetime"`
+	IDTokenLifetime      int `json:"id_token_lifetime"`
+	RefreshTokenLifetime int `json:"refresh_token_lifetime"`
+
+	AssertRoles           bool `json:"assert_roles"`
+	RequireRoleAssignment bool `json:"require_role_assignment"`
+	Enabled               bool `json:"enabled"`
+
+	// RoleCount is how many roles the application defines.
+	RoleCount int64     `json:"role_count"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func newApplicationResponse(app model.Application, roles int64) applicationResponse {
+	return applicationResponse{
+		ID:                      app.ID,
+		Name:                    app.Name,
+		Description:             app.Description,
+		Type:                    app.Type,
+		LogoURI:                 app.LogoURI,
+		ClientURI:               app.ClientURI,
+		ClientID:                app.ClientID,
+		ClientIDIssuedAt:        app.CreatedAt.Unix(),
+		HasSecret:               app.HasSecret() && app.ClientSecretHash != "",
+		SecretHint:              app.SecretHint,
+		SecretCreatedAt:         app.SecretCreatedAt,
+		TokenEndpointAuthMethod: app.TokenEndpointAuthMethod,
+		GrantTypes:              nonNil(app.GrantTypes),
+		ResponseTypes:           app.ResponseTypes(),
+		RedirectURIs:            nonNil(app.RedirectURIs),
+		PostLogoutRedirectURIs:  nonNil(app.PostLogoutRedirectURIs),
+		Scopes:                  nonNil(app.Scopes),
+		RequirePKCE:             app.RequirePKCE,
+		AccessTokenLifetime:     app.AccessTokenLifetime,
+		IDTokenLifetime:         app.IDTokenLifetime,
+		RefreshTokenLifetime:    app.RefreshTokenLifetime,
+		AssertRoles:             app.AssertRoles,
+		RequireRoleAssignment:   app.RequireRoleAssignment,
+		Enabled:                 app.Enabled,
+		RoleCount:               roles,
+		CreatedAt:               app.CreatedAt,
+		UpdatedAt:               app.UpdatedAt,
+	}
+}
+
+// secretResponse is an application together with a client secret that was
+// just made. The secret is only ever in this one answer; it is left out when
+// none was made.
+type secretResponse struct {
+	Application  applicationResponse `json:"application"`
+	ClientSecret string              `json:"client_secret,omitempty"`
+}
+
+func newSecretResponse(app applicationResponse, secret string) secretResponse {
+	return secretResponse{Application: app, ClientSecret: secret}
+}
+
+// pageResponse is a page of applications.
+type pageResponse struct {
+	Applications []applicationResponse `json:"applications"`
+	Total        int64                 `json:"total"`
+	Limit        int                   `json:"limit"`
+	Offset       int                   `json:"offset"`
+}
+
+func newPageResponse(apps []model.Application, counts map[uuid.UUID]int64, total int64, query store.ApplicationQuery) pageResponse {
+	out := make([]applicationResponse, 0, len(apps))
+	for _, app := range apps {
+		out = append(out, newApplicationResponse(app, counts[app.ID]))
+	}
+
+	return pageResponse{Applications: out, Total: total, Limit: query.Limit, Offset: query.Offset}
+}
+
+func nonNil(values []string) []string {
+	if values == nil {
+		return []string{}
+	}
+	return values
+}
+
+// accessScope is one scope of an API, and whether the application may ask for
+// it.
+type accessScope struct {
+	ID          uuid.UUID `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	Allowed     bool      `json:"allowed"`
+}
+
+// accessAPI is what an application may do with one API.
+type accessAPI struct {
+	ID           uuid.UUID     `json:"id"`
+	Name         string        `json:"name"`
+	Identifier   string        `json:"identifier"`
+	EnforceRoles bool          `json:"enforce_roles"`
+	Authorized   bool          `json:"authorized"`
+	Scopes       []accessScope `json:"scopes"`
+}
+
+// accessResponse is every API, with what the application may do with each.
+type accessResponse struct {
+	APIs []accessAPI `json:"apis"`
+}
+
+func newAccessResponse(access []store.APIAccess) accessResponse {
+	out := accessResponse{APIs: make([]accessAPI, 0, len(access))}
+
+	for _, it := range access {
+		api := accessAPI{
+			ID:           it.API.ID,
+			Name:         it.API.Name,
+			Identifier:   it.API.Identifier,
+			EnforceRoles: it.API.EnforceRoles,
+			Authorized:   it.Authorized,
+			Scopes:       make([]accessScope, 0, len(it.API.Scopes)),
+		}
+
+		for _, scope := range it.API.Scopes {
+			api.Scopes = append(api.Scopes, accessScope{
+				ID:          scope.ID,
+				Name:        scope.Name,
+				Description: scope.Description,
+				Allowed:     slices.Contains(it.Allowed, scope.ID),
+			})
+		}
+
+		out.APIs = append(out.APIs, api)
+	}
+
+	return out
+}

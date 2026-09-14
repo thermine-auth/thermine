@@ -42,3 +42,13 @@ func (s *Store) SessionsFor(ctx context.Context, adminID uuid.UUID, limit int) (
 
 	return sessions, err
 }
+
+// RevokeSessionsFor ends every open session an administrator has, so a
+// changed password or a suspended account takes effect at once rather than
+// when the sessions expire.
+func (s *Store) RevokeSessionsFor(ctx context.Context, adminID uuid.UUID, at time.Time) error {
+	return s.db.WithContext(ctx).
+		Model(&model.AdminUserSession{}).
+		Where("admin_user_id = ? AND revoked_at IS NULL", adminID).
+		Update("revoked_at", at).Error
+}

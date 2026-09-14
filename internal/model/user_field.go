@@ -285,6 +285,9 @@ const (
 	FieldFirstNameName     = "first_name"
 	FieldLastNameName      = "last_name"
 	FieldIsActiveName      = "is_active"
+	// FieldIsTemporaryPasswordName is shown and filtered like the others, but
+	// it is set together with the password rather than on its own.
+	FieldIsTemporaryPasswordName = "is_temporary_password"
 )
 
 // BuiltinFields describes the columns every user record has.
@@ -337,6 +340,13 @@ func BuiltinFields() []UserField {
 			Type:     FieldBool,
 			Builtin:  true,
 			Position: 5,
+		},
+		{
+			Name:     FieldIsTemporaryPasswordName,
+			Label:    "Temporary password",
+			Type:     FieldBool,
+			Builtin:  true,
+			Position: 6,
 		},
 	}
 }

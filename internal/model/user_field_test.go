@@ -1,6 +1,12 @@
 package model
 
-import "testing"
+import (
+	"errors"
+	"strings"
+	"testing"
+
+	"golang.org/x/crypto/bcrypt"
+)
 
 // field builds a field of the given type for a test to use.
 func field(t FieldType, required bool) UserField {
@@ -268,6 +274,8 @@ func TestBuiltinFieldsMatchTheColumns(t *testing.T) {
 		FieldFirstNameName:     true,
 		FieldLastNameName:      true,
 		FieldIsActiveName:      true,
+
+		FieldIsTemporaryPasswordName: true,
 	}
 
 	for _, field := range BuiltinFields() {
@@ -315,5 +323,27 @@ func TestUserFullName(t *testing.T) {
 				t.Errorf("FullName() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// SetPassword keeps a hash that checks against the password and nothing else,
+// and refuses a password bcrypt would not read to the end.
+func TestUserSetPassword(t *testing.T) {
+	var user User
+
+	if err := user.SetPassword("long-enough"); err != nil {
+		t.Fatalf("SetPassword() = %v", err)
+	}
+
+	if !user.HasPassword || user.PasswordHash == "" || user.PasswordHash == "long-enough" {
+		t.Fatalf("hash = %q, has password = %v; want a hash", user.PasswordHash, user.HasPassword)
+	}
+
+	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte("long-enough")) != nil {
+		t.Error("the hash does not match the password it was made from")
+	}
+
+	if err := user.SetPassword(strings.Repeat("p", 73)); !errors.Is(err, ErrPasswordTooLong) {
+		t.Errorf("SetPassword(73 bytes) = %v, want ErrPasswordTooLong", err)
 	}
 }

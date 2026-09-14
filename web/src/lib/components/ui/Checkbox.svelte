@@ -12,12 +12,17 @@
 		    box still says what it does. */
 		label?: string;
 		title?: string;
+		disabled?: boolean;
 	};
 
-	let { checked, onChange, label, title }: Props = $props();
+	let { checked, onChange, label, title, disabled }: Props = $props();
 </script>
 
-<Checkbox.Root {checked} onCheckedChange={(details) => onChange(details.checked === true)}>
+<Checkbox.Root
+	{checked}
+	{disabled}
+	onCheckedChange={(details) => onChange(details.checked === true)}
+>
 	<Checkbox.Control>
 		<Checkbox.Indicator>
 			<Icon icon={RiCheckLine} size="0.875rem" />

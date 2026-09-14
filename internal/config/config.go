@@ -17,7 +17,19 @@ import (
 type Config struct {
 	Addr        string
 	CORSOrigins []string
-	DB          DB
+
+	// SecureCookies sets the Secure flag on the session cookie, so the
+	// browser only sends it over HTTPS. Turn it on everywhere but local
+	// development over plain http.
+	SecureCookies bool
+
+	// TrustedProxies are the addresses of the proxies in front of the server,
+	// whose X-Forwarded-For header is believed about who is calling. Empty
+	// believes no one, which is right when nothing sits in front: otherwise
+	// any caller could write whatever address it liked into the activity log.
+	TrustedProxies []string
+
+	DB DB
 }
 
 // DB is the database connection and migration settings.
@@ -55,6 +67,8 @@ func Load() (Config, error) {
 
 	v.SetDefault("XERMESS_ADDR", ":8080")
 	v.SetDefault("XERMESS_CORS_ORIGINS", "http://localhost:5173")
+	v.SetDefault("XERMESS_SECURE_COOKIES", false)
+	v.SetDefault("XERMESS_TRUSTED_PROXIES", "")
 	v.SetDefault("XERMESS_DB_DRIVER", "postgres")
 	v.SetDefault("XERMESS_DB_TIMEZONE", "Asia/Bishkek")
 	v.SetDefault("XERMESS_DB_LOG_QUERIES", false)
@@ -62,8 +76,10 @@ func Load() (Config, error) {
 	v.SetDefault("XERMESS_DB_MIGRATE_DIR", "./migrations")
 
 	cfg := Config{
-		Addr:        v.GetString("XERMESS_ADDR"),
-		CORSOrigins: splitList(v.GetString("XERMESS_CORS_ORIGINS")),
+		Addr:           v.GetString("XERMESS_ADDR"),
+		CORSOrigins:    splitList(v.GetString("XERMESS_CORS_ORIGINS")),
+		SecureCookies:  v.GetBool("XERMESS_SECURE_COOKIES"),
+		TrustedProxies: splitList(v.GetString("XERMESS_TRUSTED_PROXIES")),
 		DB: DB{
 			Driver:     v.GetString("XERMESS_DB_DRIVER"),
 			DSN:        v.GetString("XERMESS_DB_DSN"),

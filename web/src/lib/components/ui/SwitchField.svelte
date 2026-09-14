@@ -1,0 +1,67 @@
+<script lang="ts">
+	import { Switch } from '@ark-ui/svelte/switch';
+
+	type Props = {
+		label: string;
+		/** What turning it on does. */
+		description?: string;
+		checked: boolean;
+		disabled?: boolean;
+		onChange?: (checked: boolean) => void;
+	};
+
+	let { label, description, checked = $bindable(false), disabled, onChange }: Props = $props();
+</script>
+
+<!-- A setting that is on or off: what it is and what it does on the left, the
+     switch on the right, the whole row one click target. Descriptions line up
+     under their labels however long they run. -->
+<Switch.Root
+	class="switch-field"
+	{checked}
+	{disabled}
+	onCheckedChange={(details) => {
+		checked = details.checked;
+		onChange?.(details.checked);
+	}}
+>
+	<span class="text">
+		<Switch.Label>{label}</Switch.Label>
+		{#if description}
+			<span class="description">{description}</span>
+		{/if}
+	</span>
+	<Switch.Control><Switch.Thumb /></Switch.Control>
+	<Switch.HiddenInput />
+</Switch.Root>
+
+<style>
+	:global([data-scope='switch'][data-part='root'].switch-field) {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-4);
+		padding: var(--space-3) 0;
+	}
+
+	:global(.switch-field + .switch-field) {
+		border-top: 1px solid var(--color-border);
+	}
+
+	.text {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		min-width: 0;
+	}
+
+	.text :global([data-part='label']) {
+		font-weight: 500;
+	}
+
+	.description {
+		color: var(--color-text-hint);
+		font-size: var(--text-sm);
+		line-height: 1.4;
+	}
+</style>

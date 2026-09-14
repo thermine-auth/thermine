@@ -27,7 +27,7 @@ export class ApiError extends Error {
 export type Fetch = typeof globalThis.fetch;
 
 type RequestOptions = {
-	method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+	method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 	body?: unknown;
 	fetch?: Fetch;
 };
@@ -70,6 +70,8 @@ export const api = {
 	get: <T>(path: string, fetcher?: Fetch) => request<T>(path, { fetch: fetcher }),
 	post: <T>(path: string, body?: unknown, fetcher?: Fetch) =>
 		request<T>(path, { method: 'POST', body, fetch: fetcher }),
+	put: <T>(path: string, body?: unknown, fetcher?: Fetch) =>
+		request<T>(path, { method: 'PUT', body, fetch: fetcher }),
 	patch: <T>(path: string, body?: unknown, fetcher?: Fetch) =>
 		request<T>(path, { method: 'PATCH', body, fetch: fetcher }),
 	delete: <T>(path: string, fetcher?: Fetch) =>

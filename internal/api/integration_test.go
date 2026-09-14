@@ -1,0 +1,498 @@
+package api
+
+import (
+	"bytes"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/cookiejar"
+	"net/http/httptest"
+	"net/url"
+	"os"
+	"path/filepath"
+	"runtime"
+	"testing"
+
+	"xermess/internal/config"
+	"xermess/internal/database"
+	"xermess/internal/store"
+)
+
+// These tests run the whole server — routes, permission checks, store and
+// migrations — against a real Postgres. They need a database server to make
+// throwaway databases on, named by XERMESS_TEST_DB_DSN:
+//
+//	XERMESS_TEST_DB_DSN=postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable go test ./internal/api/
+//
+// Without it they are skipped, so `go test ./...` still passes anywhere.
+
+// testDSNEnv names the database server the integration tests may use.
+const testDSNEnv = "XERMESS_TEST_DB_DSN"
+
+// liveServer is the server running on a database of its own.
+type liveServer struct {
+	t   *testing.T
+	url string
+}
+
+// newLiveServer makes an empty database, migrates it, and serves the API on
+// it. The database is dropped when the test ends.
+func newLiveServer(t *testing.T) *liveServer {
+	t.Helper()
+
+	dsn := os.Getenv(testDSNEnv)
+	if dsn == "" {
+		t.Skipf("%s is not set", testDSNEnv)
+	}
+
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	admin, err := database.Open(config.DB{Driver: "postgres", DSN: dsn, TimeZone: "UTC"})
+	if err != nil {
+		t.Fatalf("open the test database server: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close(admin) })
+
+	name := "xermess_test_" + randomHex(t, 6)
+	if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {
+		t.Fatalf("create %s: %v", name, err)
+	}
+
+	cfg := config.DB{Driver: "postgres", DSN: withDatabase(t, dsn, name), TimeZone: "UTC", MigrateDir: migrationsDir(t)}
+
+	db, err := database.Open(cfg)
+	if err != nil {
+		t.Fatalf("open %s: %v", name, err)
+	}
+
+	t.Cleanup(func() {
+		_ = database.Close(db)
+		_ = admin.Exec("DROP DATABASE IF EXISTS " + name + " WITH (FORCE)").Error
+	})
+
+	if err := database.Migrate(db, cfg, log); err != nil {
+		t.Fatalf("migrate %s: %v", name, err)
+	}
+
+	router, err := New(config.Config{DB: cfg}, store.New(db), log)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+
+	return &liveServer{t: t, url: server.URL + "/api/v1/admin"}
+}
+
+// client is one browser: it keeps its own session cookie.
+type client struct {
+	s    *liveServer
+	http *http.Client
+}
+
+func (s *liveServer) client() *client {
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		s.t.Fatal(err)
+	}
+
+	return &client{s: s, http: &http.Client{Jar: jar}}
+}
+
+// do sends a JSON request and decodes the JSON answer into `out`, when given.
+func (c *client) do(method, path string, body any, out any) int {
+	c.s.t.Helper()
+
+	var reader io.Reader
+	if body != nil {
+		encoded, err := json.Marshal(body)
+		if err != nil {
+			c.s.t.Fatal(err)
+		}
+		reader = bytes.NewReader(encoded)
+	}
+
+	req, err := http.NewRequest(method, c.s.url+path, reader)
+	if err != nil {
+		c.s.t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	res, err := c.http.Do(req)
+	if err != nil {
+		c.s.t.Fatal(err)
+	}
+	defer res.Body.Close()
+
+	if out != nil {
+		if err := json.NewDecoder(res.Body).Decode(out); err != nil && err != io.EOF {
+			c.s.t.Fatalf("%s %s: decode: %v", method, path, err)
+		}
+	}
+
+	return res.StatusCode
+}
+
+// must sends a request that has to answer with `want`.
+func (c *client) must(want int, method, path string, body any, out any) {
+	c.s.t.Helper()
+
+	var raw json.RawMessage
+	status := c.do(method, path, body, &raw)
+	if status != want {
+		c.s.t.Fatalf("%s %s = %d %s, want %d", method, path, status, raw, want)
+	}
+
+	if out != nil && len(raw) > 0 {
+		if err := json.Unmarshal(raw, out); err != nil {
+			c.s.t.Fatal(err)
+		}
+	}
+}
+
+func (c *client) login(email, password string) int {
+	return c.do(http.MethodPost, "/auth/login", map[string]string{"username": email, "password": password}, nil)
+}
+
+const superEmail, superPassword = "root@example.com", "root-password-1"
+
+// superAdmin sets the panel up and signs its first administrator in.
+func (s *liveServer) superAdmin() *client {
+	c := s.client()
+	c.must(http.StatusCreated, http.MethodPost, "/setup", map[string]string{
+		"email": superEmail, "password": superPassword, "first_name": "Root",
+	}, nil)
+
+	if status := c.login(superEmail, superPassword); status != http.StatusOK {
+		s.t.Fatalf("super admin login = %d", status)
+	}
+
+	return c
+}
+
+type idOnly struct {
+	ID string `json:"id"`
+}
+
+// application registers a web application and returns its id.
+func (c *client) application(name string) string {
+	var out struct {
+		Application idOnly `json:"application"`
+	}
+	c.must(http.StatusCreated, http.MethodPost, "/applications", map[string]any{
+		"name": name, "type": "web",
+		"grant_types":   []string{"authorization_code"},
+		"redirect_uris": []string{"https://" + name + ".example.com/callback"},
+		"scopes":        []string{"openid"},
+	}, &out)
+
+	return out.Application.ID
+}
+
+// role creates a user role — global when app is "" — and returns its id.
+func (c *client) role(name, app string, inherits ...string) string {
+	body := map[string]any{"name": name, "inherits": inherits}
+	if app != "" {
+		body["application_id"] = app
+	}
+
+	var out struct {
+		Role idOnly `json:"role"`
+	}
+	c.must(http.StatusCreated, http.MethodPost, "/user-roles", body, &out)
+
+	return out.Role.ID
+}
+
+// adminRoleID finds a seeded admin role by name.
+func (c *client) adminRoleID(name string) string {
+	var out struct {
+		Roles []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"roles"`
+	}
+	c.must(http.StatusOK, http.MethodGet, "/admin-roles", nil, &out)
+
+	for _, role := range out.Roles {
+		if role.Name == name {
+			return role.ID
+		}
+	}
+
+	c.s.t.Fatalf("no admin role %q", name)
+	return ""
+}
+
+// appManager creates an administrator holding app_manager for one application
+// and signs them in.
+func (s *liveServer) appManager(super *client, app string) *client {
+	const email, password = "manager@example.com", "manager-password-1"
+
+	super.must(http.StatusCreated, http.MethodPost, "/admins", map[string]any{
+		"email": email, "first_name": "Manager", "status": "active",
+		"password": password, "confirm_password": password,
+		"assignments": []map[string]any{{"role_id": super.adminRoleID("app_manager"), "application_id": app}},
+	}, nil)
+
+	c := s.client()
+	if status := c.login(email, password); status != http.StatusOK {
+		s.t.Fatalf("app manager login = %d", status)
+	}
+
+	return c
+}
+
+func TestLiveFirstAdminOnlyOnce(t *testing.T) {
+	s := newLiveServer(t)
+	s.superAdmin()
+
+	status := s.client().do(http.MethodPost, "/setup", map[string]string{
+		"email": "second@example.com", "password": "second-password", "first_name": "Second",
+	}, nil)
+	if status != http.StatusConflict {
+		t.Errorf("second setup = %d, want 409", status)
+	}
+}
+
+func TestLiveLoginLockout(t *testing.T) {
+	s := newLiveServer(t)
+	s.superAdmin()
+
+	c := s.client()
+	for range 5 {
+		if status := c.login(superEmail, "wrong-password"); status != http.StatusUnauthorized {
+			t.Fatalf("wrong password = %d, want 401", status)
+		}
+	}
+
+	if status := c.login(superEmail, superPassword); status != http.StatusUnauthorized {
+		t.Errorf("right password on a locked account = %d, want 401", status)
+	}
+}
+
+func TestLiveLoginResetsFailures(t *testing.T) {
+	s := newLiveServer(t)
+	s.superAdmin()
+
+	c := s.client()
+	for range 4 {
+		c.login(superEmail, "wrong-password")
+	}
+	if status := c.login(superEmail, superPassword); status != http.StatusOK {
+		t.Fatalf("login after four failures = %d, want 200", status)
+	}
+
+	// The count started again, so four more are not a lock either.
+	for range 4 {
+		c.login(superEmail, "wrong-password")
+	}
+	if status := c.login(superEmail, superPassword); status != http.StatusOK {
+		t.Errorf("login after four more failures = %d, want 200", status)
+	}
+}
+
+// An administrator of one application manages its roles, but cannot reach
+// the global roles or another application's through them.
+func TestLiveScopedAdminStaysInTheirApplication(t *testing.T) {
+	s := newLiveServer(t)
+	super := s.superAdmin()
+
+	shop := super.application("shop")
+	blog := super.application("blog")
+	employee := super.role("employee", "")
+	blogWriter := super.role("writer", blog)
+
+	manager := s.appManager(super, shop)
+
+	// Their own application's roles are theirs to make.
+	viewer := manager.role("viewer", shop)
+	manager.role("editor", shop, viewer)
+
+	// Including a global role would hand it to everyone holding the role.
+	status := manager.do(http.MethodPost, "/user-roles", map[string]any{
+		"name": "staff", "application_id": shop, "inherits": []string{employee},
+	}, nil)
+	if status != http.StatusForbidden {
+		t.Errorf("app role including a global role = %d, want 403", status)
+	}
+
+	// Another application's roles are not even there.
+	status = manager.do(http.MethodPost, "/user-roles", map[string]any{
+		"name": "staff", "application_id": shop, "inherits": []string{blogWriter},
+	}, nil)
+	if status != http.StatusBadRequest {
+		t.Errorf("app role including another app's role = %d, want 400", status)
+	}
+
+	if status := manager.do(http.MethodPost, "/user-roles", map[string]any{"name": "intruder", "application_id": blog}, nil); status != http.StatusBadRequest {
+		t.Errorf("role in another application = %d, want 400", status)
+	}
+
+	if status := manager.do(http.MethodPost, "/user-roles", map[string]any{"name": "intruder"}, nil); status != http.StatusForbidden {
+		t.Errorf("global role = %d, want 403", status)
+	}
+
+	if status := manager.do(http.MethodGet, "/applications/"+blog, nil, nil); status != http.StatusNotFound {
+		t.Errorf("another application = %d, want 404", status)
+	}
+
+	if status := manager.do(http.MethodGet, "/admins", nil, nil); status != http.StatusForbidden {
+		t.Errorf("administrators = %d, want 403", status)
+	}
+
+	// A super admin may still compose across scopes.
+	super.role("staff", shop, employee)
+}
+
+// An inclusion someone else made stays when a scoped administrator edits the
+// rest of the role.
+func TestLiveScopedAdminKeepsExistingInclusions(t *testing.T) {
+	s := newLiveServer(t)
+	super := s.superAdmin()
+
+	shop := super.application("shop")
+	employee := super.role("employee", "")
+	staff := super.role("staff", shop, employee)
+
+	manager := s.appManager(super, shop)
+
+	manager.must(http.StatusOK, http.MethodPatch, "/user-roles/"+staff, map[string]any{
+		"name": "staff", "description": "Everyone at the shop", "inherits": []string{employee},
+	}, nil)
+}
+
+type apiScope struct {
+	ID          string `json:"id,omitempty"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Default     bool   `json:"default"`
+}
+
+type apiBody struct {
+	ID     string     `json:"id"`
+	Scopes []apiScope `json:"scopes"`
+}
+
+func TestLiveAPIScopesCanTradeNames(t *testing.T) {
+	s := newLiveServer(t)
+	super := s.superAdmin()
+
+	var created struct {
+		API apiBody `json:"api"`
+	}
+	super.must(http.StatusCreated, http.MethodPost, "/apis", map[string]any{
+		"name": "Orders", "identifier": "https://api.example.com/orders",
+		"scopes": []apiScope{{Name: "orders:read"}, {Name: "orders:write"}},
+	}, &created)
+
+	read, write := created.API.Scopes[0], created.API.Scopes[1]
+	read.Name, write.Name = write.Name, read.Name
+
+	var updated struct {
+		API apiBody `json:"api"`
+	}
+	super.must(http.StatusOK, http.MethodPatch, "/apis/"+created.API.ID, map[string]any{
+		"name": "Orders", "scopes": []apiScope{read, write},
+	}, &updated)
+
+	names := map[string]string{}
+	for _, scope := range updated.API.Scopes {
+		names[scope.ID] = scope.Name
+	}
+	if names[read.ID] != "orders:write" || names[write.ID] != "orders:read" {
+		t.Errorf("scopes after trading names = %v, want the ids kept and the names swapped", names)
+	}
+
+	// A new scope may take the name of one removed in the same save: read is
+	// called orders:write by now.
+	super.must(http.StatusOK, http.MethodPatch, "/apis/"+created.API.ID, map[string]any{
+		"name": "Orders", "scopes": []apiScope{write, {Name: "orders:write"}},
+	}, nil)
+}
+
+// Deleting an application takes its roles with it, the API scopes they grant
+// included.
+func TestLiveDeleteApplicationWithRoleGrants(t *testing.T) {
+	s := newLiveServer(t)
+	super := s.superAdmin()
+
+	var api struct {
+		API apiBody `json:"api"`
+	}
+	super.must(http.StatusCreated, http.MethodPost, "/apis", map[string]any{
+		"name": "Orders", "identifier": "https://api.example.com/orders",
+		"scopes": []apiScope{{Name: "orders:read"}},
+	}, &api)
+
+	shop := super.application("shop")
+	super.must(http.StatusCreated, http.MethodPost, "/user-roles", map[string]any{
+		"name": "buyer", "application_id": shop, "api_scopes": []string{api.API.Scopes[0].ID},
+	}, nil)
+	super.must(http.StatusOK, http.MethodPut, "/applications/"+shop+"/apis/"+api.API.ID, map[string]any{
+		"scopes": []string{api.API.Scopes[0].ID},
+	}, nil)
+
+	super.must(http.StatusNoContent, http.MethodDelete, "/applications/"+shop, nil, nil)
+
+	var roles struct {
+		Total int `json:"total"`
+	}
+	super.must(http.StatusOK, http.MethodGet, "/user-roles", nil, &roles)
+	if roles.Total != 0 {
+		t.Errorf("roles after deleting their application = %d, want 0", roles.Total)
+	}
+
+	super.must(http.StatusNoContent, http.MethodDelete, "/apis/"+api.API.ID, nil, nil)
+}
+
+func TestLiveSearchTreatsWildcardsLiterally(t *testing.T) {
+	s := newLiveServer(t)
+	super := s.superAdmin()
+
+	super.role("first_line", "")
+	super.role("firstaline", "")
+
+	var out struct {
+		Total int `json:"total"`
+	}
+	super.must(http.StatusOK, http.MethodGet, "/user-roles?search="+url.QueryEscape("first_"), nil, &out)
+	if out.Total != 1 {
+		t.Errorf("search for first_ = %d roles, want only first_line", out.Total)
+	}
+}
+
+// migrationsDir is the migrations folder, found from this file rather than
+// from wherever the tests run.
+func migrationsDir(t *testing.T) string {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("cannot find the migrations")
+	}
+
+	return filepath.Join(filepath.Dir(file), "..", "..", "migrations")
+}
+
+// withDatabase is the DSN with its database swapped for another.
+func withDatabase(t *testing.T, dsn, name string) string {
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatalf("%s is not a URL: %v", testDSNEnv, err)
+	}
+	parsed.Path = "/" + name
+
+	return parsed.String()
+}
+
+func randomHex(t *testing.T, n int) string {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		t.Fatal(err)
+	}
+
+	return hex.EncodeToString(b)
+}

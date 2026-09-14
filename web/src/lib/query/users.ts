@@ -3,9 +3,9 @@ import { queryOptions } from '@tanstack/svelte-query';
 import { usersApi, type UserField, type UserPage } from '$lib/api';
 import { keys } from './keys';
 
-/** What the list is asked for: the search box and the verified filter, both
-    of which live in the URL. */
-export type UserListParams = { search: string; verified: string };
+/** What the list is asked for: the search box, the verified filter and the
+    role filter, all of which live in the URL. */
+export type UserListParams = { search: string; verified: string; role: string };
 
 /**
  * The users matching a search.

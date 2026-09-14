@@ -1,34 +1,5 @@
 package model
 
-// RoleName is the name of a role. Roles live in their own table so they can
-// carry permissions, but the names an admin can hold are fixed here.
-type RoleName string
-
-const (
-	RoleSuperAdmin RoleName = "super_admin"
-	RoleAdmin      RoleName = "admin"
-	RoleSupport    RoleName = "support"
-	RoleAuditor    RoleName = "auditor"
-)
-
-// RoleNames lists every role, for seeding and validation.
-var RoleNames = []RoleName{RoleSuperAdmin, RoleAdmin, RoleSupport, RoleAuditor}
-
-// Valid reports whether r is a known role.
-func (r RoleName) Valid() bool {
-	for _, known := range RoleNames {
-		if r == known {
-			return true
-		}
-	}
-	return false
-}
-
-// String returns the role name.
-func (r RoleName) String() string {
-	return string(r)
-}
-
 // Status is the state of an admin account.
 type Status string
 

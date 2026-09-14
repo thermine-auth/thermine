@@ -64,7 +64,9 @@
 			<div class="identity">
 				<strong>{admin.full_name}</strong>
 				<span class="hint">{admin.email}</span>
-				<span class="roles">{admin.roles.join(', ')}</span>
+				{#if admin.roles.length > 0}
+					<span class="roles">{admin.roles.join(', ')}</span>
+				{/if}
 			</div>
 
 			<Menu.Separator />
