@@ -37,6 +37,17 @@ type Application struct {
 	LogoURI   string `gorm:"size:512" json:"logo_uri"`
 	ClientURI string `gorm:"size:512" json:"client_uri"`
 
+	// PolicyURI and TosURI are the application's privacy policy and terms
+	// of service, linked from its sign-in pages and agreed to on
+	// registration. The names are RFC 7591's.
+	PolicyURI string `gorm:"size:512" json:"policy_uri"`
+	TosURI    string `gorm:"size:512" json:"tos_uri"`
+
+	// AllowRegistration offers "Create an account" on the application's
+	// sign-in page. Users made that way get the default roles, as users an
+	// administrator makes do.
+	AllowRegistration bool `gorm:"not null" json:"allow_registration"`
+
 	// ClientID is what the application identifies itself with. It is made
 	// here and never changes.
 	ClientID string `gorm:"size:64;uniqueIndex;not null" json:"client_id"`
@@ -187,6 +198,7 @@ func (a *Application) Normalise() {
 	}
 
 	if a.Type == AppM2M {
+		a.AllowRegistration = false
 		a.GrantTypes = []string{GrantClientCredentials}
 		a.RedirectURIs = []string{}
 		a.PostLogoutRedirectURIs = []string{}
@@ -260,13 +272,21 @@ func (a Application) Validate() error {
 		}
 	}
 
-	// client_uri is only a link to the application's home page, so plain http
-	// is fine, as it is for an app running on a developer's machine. logo_uri
+	// client_uri, policy_uri and tos_uri are only links, so plain http is
+	// fine, as it is for an app running on a developer's machine. logo_uri
 	// is loaded as an image on the sign-in page, which is served over https,
 	// and a browser blocks an http image there.
-	if a.ClientURI != "" {
-		if parsed, err := url.Parse(a.ClientURI); err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" {
-			return fmt.Errorf("client_uri must be an http or https URL")
+	links := []struct{ name, value string }{
+		{"client_uri", a.ClientURI},
+		{"policy_uri", a.PolicyURI},
+		{"tos_uri", a.TosURI},
+	}
+	for _, link := range links {
+		if link.value == "" {
+			continue
+		}
+		if parsed, err := url.Parse(link.value); err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" {
+			return fmt.Errorf("%s must be an http or https URL", link.name)
 		}
 	}
 

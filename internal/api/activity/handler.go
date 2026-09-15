@@ -146,6 +146,12 @@ func (h *Handler) describe(c *gin.Context, events []model.AuditLog) ([]eventResp
 			}
 		}
 
+		// What a user did at the sign-in pages is recorded under their own
+		// address, which is only for administrators who may read users.
+		if event.AdminUserID == nil && event.TargetType == "user" && !maySeeName(c, "user", store.TargetName{}) {
+			response.Actor = "A user"
+		}
+
 		response.Detail = detail(c, event)
 		out = append(out, response)
 	}
@@ -188,7 +194,7 @@ func detail(c *gin.Context, event model.AuditLog) string {
 	}
 
 	switch event.Action {
-	case "admin.login_failed", "admin.login_blocked":
+	case "admin.login_failed", "admin.login_blocked", "admin.mfa_failed", "user.login_failed", "user.login_blocked":
 		return text("reason")
 	case "application.api_authorized", "application.api_revoked":
 		if admin := session.Admin(c); admin != nil && admin.HasPermission(model.PermAPIsRead) {

@@ -1,0 +1,259 @@
+<script lang="ts">
+	import { invalidateAll } from '$app/navigation';
+	import { account, messageOf } from '$lib/api';
+	import { Alert, Button, Icon, Panel, PasswordField } from '$lib/components';
+	import { describeDevice, formatDate, timeAgo } from '$lib/utils/format';
+	import type { PageProps } from './$types';
+
+	let { data }: PageProps = $props();
+
+	const minLength = 8;
+
+	let current = $state('');
+	let next = $state('');
+	let confirm = $state('');
+	let changing = $state(false);
+	let passwordError = $state('');
+	let passwordChanged = $state(false);
+
+	const mismatch = $derived(confirm !== '' && confirm !== next);
+	const canChange = $derived(
+		current !== '' && next.length >= minLength && confirm === next && !changing
+	);
+
+	async function changePassword(event: SubmitEvent) {
+		event.preventDefault();
+		if (!canChange) return;
+
+		changing = true;
+		passwordError = '';
+		passwordChanged = false;
+
+		try {
+			await account.changePassword({ current_password: current, new_password: next });
+			current = next = confirm = '';
+			passwordChanged = true;
+			// Every other session has ended: the list below shrinks.
+			await invalidateAll();
+		} catch (err) {
+			passwordError = messageOf(err);
+		} finally {
+			changing = false;
+		}
+	}
+
+	let ending = $state<string | null>(null);
+	let sessionError = $state('');
+
+	async function endSession(id: string) {
+		ending = id;
+		sessionError = '';
+
+		try {
+			await account.endSession(id);
+			await invalidateAll();
+		} catch (err) {
+			sessionError = messageOf(err);
+		} finally {
+			ending = null;
+		}
+	}
+
+	const others = $derived(data.sessions.filter((session) => !session.current).length);
+</script>
+
+<svelte:head>
+	<title>Security · Account</title>
+</svelte:head>
+
+<div class="page">
+	<div class="heading">
+		<h1>Security</h1>
+		<p>Your password, and the devices you are signed in on.</p>
+	</div>
+
+	<form onsubmit={changePassword}>
+		<Panel
+			title="Change password"
+			description="Changing it signs you out on every other device, and from every connected app."
+		>
+			{#if passwordError}<Alert>{passwordError}</Alert>{/if}
+			{#if passwordChanged}
+				<Alert tone="success"
+					>Your password has been changed. Other devices have been signed out.</Alert
+				>
+			{/if}
+
+			<PasswordField label="Current password" bind:value={current} disabled={changing} />
+			<div class="pair">
+				<PasswordField
+					label="New password"
+					bind:value={next}
+					autocomplete="new-password"
+					disabled={changing}
+					hint="At least {minLength} characters"
+				/>
+				<PasswordField
+					label="Confirm new password"
+					bind:value={confirm}
+					autocomplete="new-password"
+					disabled={changing}
+					error={mismatch ? 'The passwords do not match' : undefined}
+				/>
+			</div>
+
+			{#snippet footer()}
+				<Button type="submit" loading={changing} disabled={!canChange}>Change password</Button>
+			{/snippet}
+		</Panel>
+	</form>
+
+	<Panel
+		title="Where you’re signed in"
+		description="Sign out of any device you don’t recognise, then change your password."
+	>
+		{#snippet aside()}
+			<span class="count">{data.sessions.length}</span>
+		{/snippet}
+
+		{#if sessionError}<Alert>{sessionError}</Alert>{/if}
+
+		<ul class="sessions">
+			{#each data.sessions as session (session.id)}
+				<li>
+					<span class="device"><Icon name="device" /></span>
+					<div class="details">
+						<strong>
+							{describeDevice(session.user_agent)}
+							{#if session.current}<span class="current">This device</span>{/if}
+						</strong>
+						<span>
+							{session.ip || 'Unknown address'} · signed in {timeAgo(session.signed_in_at)} · until {formatDate(
+								session.expires_at
+							)}
+						</span>
+					</div>
+					{#if !session.current}
+						<Button
+							variant="danger"
+							size="sm"
+							loading={ending === session.id}
+							onclick={() => endSession(session.id)}>Sign out</Button
+						>
+					{/if}
+				</li>
+			{/each}
+		</ul>
+
+		{#if others === 0}
+			<p class="empty">You’re not signed in anywhere else.</p>
+		{/if}
+	</Panel>
+</div>
+
+<style>
+	.page {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-5);
+	}
+
+	h1 {
+		font-size: var(--text-2xl);
+	}
+
+	.heading p {
+		margin-top: var(--space-1);
+		color: var(--color-text-hint);
+	}
+
+	.pair {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: var(--space-4);
+	}
+
+	.count {
+		padding: 2px 10px;
+		border-radius: 999px;
+		background: var(--color-input);
+		color: var(--color-text-hint);
+		font-weight: 600;
+	}
+
+	.sessions {
+		display: flex;
+		flex-direction: column;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.sessions li {
+		display: flex;
+		align-items: center;
+		gap: var(--space-3);
+		padding: var(--space-3) 0;
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.sessions li:first-child {
+		padding-top: 0;
+	}
+
+	.sessions li:last-child {
+		padding-bottom: 0;
+		border-bottom: 0;
+	}
+
+	.device {
+		display: grid;
+		place-items: center;
+		flex-shrink: 0;
+		width: 40px;
+		height: 40px;
+		border-radius: var(--radius-md);
+		background: var(--color-input);
+		color: var(--color-text-hint);
+	}
+
+	.details {
+		display: flex;
+		flex: 1;
+		flex-direction: column;
+		min-width: 0;
+	}
+
+	.details strong {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2);
+	}
+
+	.details span {
+		color: var(--color-text-hint);
+		font-size: var(--text-sm);
+		overflow-wrap: anywhere;
+	}
+
+	.current {
+		padding: 1px 8px;
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--color-success), transparent 86%);
+		color: var(--color-success) !important;
+		font-size: var(--text-xs) !important;
+		font-weight: 600;
+	}
+
+	.empty {
+		color: var(--color-text-hint);
+		font-size: var(--text-sm);
+	}
+
+	@media (max-width: 36rem) {
+		.pair {
+			grid-template-columns: 1fr;
+		}
+	}
+</style>

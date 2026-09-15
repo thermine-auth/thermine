@@ -1,0 +1,60 @@
+// Package keys answers the endpoints a super admin sees and rotates the keys
+// tokens are signed with.
+//
+// Rotation normally happens on its own (XERMESS_KEY_ROTATION_DAYS): a new key
+// is published a day before it signs, and an old one stays published for two
+// days after. These endpoints are for looking, and for rotating now — at once,
+// and revoking the old keys, when one may have leaked.
+package keys
+
+import (
+	"log/slog"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+
+	"xermess/internal/api/audit"
+	"xermess/internal/api/respond"
+	"xermess/internal/oidc"
+)
+
+// Handler holds what these endpoints need.
+type Handler struct {
+	provider *oidc.Service
+	audit    audit.Recorder
+	log      *slog.Logger
+}
+
+// New returns a Handler.
+func New(provider *oidc.Service, recorder audit.Recorder, log *slog.Logger) *Handler {
+	return &Handler{provider: provider, audit: recorder, log: log}
+}
+
+// List describes every published key: the one signing, the next one waiting,
+// and the retired ones still published.
+func (h *Handler) List(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"keys": h.provider.SigningKeys()})
+}
+
+// Rotate makes new keys now.
+func (h *Handler) Rotate(c *gin.Context) {
+	var req rotateRequest
+	if c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			respond.BadRequest(c, "the request body is not valid")
+			return
+		}
+	}
+
+	if err := h.provider.RotateKeys(c.Request.Context(), req.Immediate, req.RevokeOld); err != nil {
+		respond.Failure(c, h.log, err, "rotating the signing keys failed")
+		return
+	}
+
+	h.audit.RecordWith(c, "signing_keys.rotated", "", "", map[string]any{
+		"immediate":  req.Immediate || req.RevokeOld,
+		"revoke_old": req.RevokeOld,
+	})
+
+	c.JSON(http.StatusOK, gin.H{"keys": h.provider.SigningKeys()})
+}

@@ -39,3 +39,23 @@ func (MFA) TableName() string {
 func (m MFA) IsConfirmed() bool {
 	return m.ConfirmedAt != nil
 }
+
+// HasMFA reports whether the administrator has a confirmed second factor. The
+// store loads only confirmed factors onto an administrator, so any is one.
+func (a AdminUser) HasMFA() bool {
+	for _, factor := range a.MFA {
+		if factor.IsConfirmed() {
+			return true
+		}
+	}
+	return false
+}
+
+// UsedStep is the last TOTP step a factor accepted. LastUsedAt is written as
+// the start of that step, so the step can be read back from it exactly.
+func (m MFA) UsedStep(period time.Duration) int64 {
+	if m.LastUsedAt == nil {
+		return 0
+	}
+	return m.LastUsedAt.Unix() / int64(period/time.Second)
+}

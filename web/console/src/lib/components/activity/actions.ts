@@ -1,0 +1,504 @@
+import type { ComponentType } from 'svelte';
+import {
+	RiAdminLine,
+	RiAppsLine,
+	RiCodeBoxLine,
+	RiErrorWarningLine,
+	RiFileList3Line,
+	RiKey2Line,
+	RiLockLine,
+	RiLoginBoxLine,
+	RiLogoutBoxRLine,
+	RiPulseLine,
+	RiShieldKeyholeLine,
+	RiShieldUserLine,
+	RiUserLine
+} from 'svelte-remixicon';
+import type { ActivityEvent } from '$lib/api';
+
+/**
+ * What the actions in the activity log mean, said the way a person would.
+ *
+ * The server records an action as "<resource>.<what happened>" — see the
+ * audit.Record calls in internal/api, and internal/auth for signing in. Each
+ * is given a sentence, an icon and a tone here, so the dashboard, the logs
+ * page and anything else listing activity say the same thing. An action not
+ * listed still shows, by its raw name.
+ */
+
+/** The kind of thing an entry is about, which picks its colour. */
+export type Category = 'access' | 'users' | 'roles' | 'applications' | 'apis' | 'admins' | 'other';
+
+/** How much an entry deserves attention. */
+export type Tone = 'neutral' | 'success' | 'danger' | 'warning';
+
+type Action = {
+	/** A short name for a badge or a filter: "Application created". */
+	label: string;
+	/** What the actor did, before the target: "created application". */
+	verb: string;
+	/** What comes after the target, if the sentence goes on. */
+	after?: string;
+	category: Category;
+	tone?: Tone;
+	icon: ComponentType;
+};
+
+const actions: Record<string, Action> = {
+	'admin.login': {
+		label: 'Signed in',
+		verb: 'signed in',
+		category: 'access',
+		tone: 'success',
+		icon: RiLoginBoxLine
+	},
+	'admin.logout': {
+		label: 'Signed out',
+		verb: 'signed out',
+		category: 'access',
+		icon: RiLogoutBoxRLine
+	},
+	'admin.login_failed': {
+		label: 'Sign-in failed',
+		verb: 'failed to sign in',
+		category: 'access',
+		tone: 'danger',
+		icon: RiErrorWarningLine
+	},
+	'admin.login_blocked': {
+		label: 'Sign-in blocked',
+		verb: 'was blocked from signing in',
+		category: 'access',
+		tone: 'warning',
+		icon: RiLockLine
+	},
+
+	'admin.mfa_failed': {
+		label: 'Two-factor failed',
+		verb: 'entered a wrong two-factor code',
+		category: 'access',
+		tone: 'danger',
+		icon: RiErrorWarningLine
+	},
+	'admin.mfa_enabled': {
+		label: 'Two-factor on',
+		verb: 'turned on two-factor sign-in',
+		category: 'access',
+		tone: 'success',
+		icon: RiShieldKeyholeLine
+	},
+	'admin.mfa_replaced': {
+		label: 'Authenticator replaced',
+		verb: 'replaced their authenticator',
+		category: 'access',
+		tone: 'warning',
+		icon: RiShieldKeyholeLine
+	},
+	'admin.mfa_disabled': {
+		label: 'Two-factor off',
+		verb: 'turned off two-factor sign-in',
+		category: 'access',
+		tone: 'warning',
+		icon: RiShieldKeyholeLine
+	},
+	'admin.recovery_codes_regenerated': {
+		label: 'Recovery codes renewed',
+		verb: 'made new recovery codes',
+		category: 'access',
+		icon: RiKey2Line
+	},
+	'signing_keys.rotated': {
+		label: 'Signing keys rotated',
+		verb: 'rotated the token signing keys',
+		category: 'admins',
+		tone: 'warning',
+		icon: RiKey2Line
+	},
+	'admin.mfa_reset': {
+		label: 'Two-factor reset',
+		verb: 'reset the two-factor sign-in of',
+		category: 'admins',
+		tone: 'warning',
+		icon: RiShieldKeyholeLine
+	},
+
+	'user.login': {
+		label: 'User signed in',
+		verb: 'signed in to an application',
+		category: 'access',
+		tone: 'success',
+		icon: RiLoginBoxLine
+	},
+	'user.logout': {
+		label: 'User signed out',
+		verb: 'signed out',
+		category: 'access',
+		icon: RiLogoutBoxRLine
+	},
+	'user.login_failed': {
+		label: 'User sign-in failed',
+		verb: 'failed to sign in to an application',
+		category: 'access',
+		tone: 'danger',
+		icon: RiErrorWarningLine
+	},
+	'user.login_blocked': {
+		label: 'User sign-in blocked',
+		verb: 'was blocked from signing in',
+		category: 'access',
+		tone: 'warning',
+		icon: RiLockLine
+	},
+	'user.registered': {
+		label: 'User registered',
+		verb: 'created an account',
+		category: 'users',
+		tone: 'success',
+		icon: RiUserLine
+	},
+	'user.password_reset_requested': {
+		label: 'Password reset requested',
+		verb: 'asked to reset their password',
+		category: 'access',
+		icon: RiKey2Line
+	},
+	'user.password_changed_self': {
+		label: 'Password changed',
+		verb: 'changed their password',
+		category: 'access',
+		tone: 'warning',
+		icon: RiKey2Line
+	},
+	'user.profile_updated': {
+		label: 'Profile updated',
+		verb: 'updated their profile',
+		category: 'users',
+		icon: RiUserLine
+	},
+	'user.session_revoked': {
+		label: 'Device signed out',
+		verb: 'signed out another device',
+		category: 'access',
+		icon: RiLogoutBoxRLine
+	},
+	'user.application_disconnected': {
+		label: 'App disconnected',
+		verb: 'disconnected an application',
+		category: 'access',
+		icon: RiAppsLine
+	},
+	'user.password_reset': {
+		label: 'Password reset',
+		verb: 'reset their password',
+		category: 'access',
+		tone: 'warning',
+		icon: RiKey2Line
+	},
+
+	'user.created': {
+		label: 'User created',
+		verb: 'created user',
+		category: 'users',
+		tone: 'success',
+		icon: RiUserLine
+	},
+	'user.updated': {
+		label: 'User updated',
+		verb: 'updated user',
+		category: 'users',
+		icon: RiUserLine
+	},
+	'user.deleted': {
+		label: 'User deleted',
+		verb: 'deleted user',
+		category: 'users',
+		tone: 'danger',
+		icon: RiUserLine
+	},
+	'user.password_changed': {
+		label: 'Password changed',
+		verb: 'changed the password of',
+		category: 'users',
+		tone: 'warning',
+		icon: RiKey2Line
+	},
+	'user.roles_assigned': {
+		label: 'Roles assigned',
+		verb: 'assigned roles to',
+		category: 'roles',
+		icon: RiShieldUserLine
+	},
+	'user.role_unassigned': {
+		label: 'Role removed',
+		verb: 'removed a role from',
+		category: 'roles',
+		icon: RiShieldUserLine
+	},
+	'user_field.created': {
+		label: 'Field added',
+		verb: 'added the user field',
+		category: 'users',
+		icon: RiFileList3Line
+	},
+	'user_field.updated': {
+		label: 'Field updated',
+		verb: 'updated the user field',
+		category: 'users',
+		icon: RiFileList3Line
+	},
+	'user_field.deleted': {
+		label: 'Field removed',
+		verb: 'removed the user field',
+		category: 'users',
+		tone: 'danger',
+		icon: RiFileList3Line
+	},
+
+	'user_role.created': {
+		label: 'Role created',
+		verb: 'created role',
+		category: 'roles',
+		tone: 'success',
+		icon: RiShieldUserLine
+	},
+	'user_role.updated': {
+		label: 'Role updated',
+		verb: 'updated role',
+		category: 'roles',
+		icon: RiShieldUserLine
+	},
+	'user_role.deleted': {
+		label: 'Role deleted',
+		verb: 'deleted role',
+		category: 'roles',
+		tone: 'danger',
+		icon: RiShieldUserLine
+	},
+
+	'application.created': {
+		label: 'Application registered',
+		verb: 'registered application',
+		category: 'applications',
+		tone: 'success',
+		icon: RiAppsLine
+	},
+	'application.updated': {
+		label: 'Application updated',
+		verb: 'updated application',
+		category: 'applications',
+		icon: RiAppsLine
+	},
+	'application.deleted': {
+		label: 'Application deleted',
+		verb: 'deleted application',
+		category: 'applications',
+		tone: 'danger',
+		icon: RiAppsLine
+	},
+	'application.secret_rotated': {
+		label: 'Secret rotated',
+		verb: 'rotated the client secret of',
+		category: 'applications',
+		tone: 'warning',
+		icon: RiKey2Line
+	},
+	'application.api_authorized': {
+		label: 'API access granted',
+		verb: 'gave',
+		after: 'access to an API',
+		category: 'apis',
+		tone: 'success',
+		icon: RiCodeBoxLine
+	},
+	'application.api_revoked': {
+		label: 'API access revoked',
+		verb: 'revoked the API access of',
+		category: 'apis',
+		tone: 'danger',
+		icon: RiCodeBoxLine
+	},
+
+	'api.created': {
+		label: 'API registered',
+		verb: 'registered API',
+		category: 'apis',
+		tone: 'success',
+		icon: RiCodeBoxLine
+	},
+	'api.updated': {
+		label: 'API updated',
+		verb: 'updated API',
+		category: 'apis',
+		icon: RiCodeBoxLine
+	},
+	'api.deleted': {
+		label: 'API deleted',
+		verb: 'deleted API',
+		category: 'apis',
+		tone: 'danger',
+		icon: RiCodeBoxLine
+	},
+
+	'admin.created': {
+		label: 'Administrator added',
+		verb: 'added administrator',
+		category: 'admins',
+		tone: 'success',
+		icon: RiAdminLine
+	},
+	'admin.updated': {
+		label: 'Administrator updated',
+		verb: 'updated administrator',
+		category: 'admins',
+		icon: RiAdminLine
+	},
+	'admin.deleted': {
+		label: 'Administrator removed',
+		verb: 'removed administrator',
+		category: 'admins',
+		tone: 'danger',
+		icon: RiAdminLine
+	},
+	'admin.password_changed': {
+		label: 'Admin password changed',
+		verb: 'changed the password of administrator',
+		category: 'admins',
+		tone: 'warning',
+		icon: RiKey2Line
+	},
+	'admin_role.created': {
+		label: 'Admin role created',
+		verb: 'created admin role',
+		category: 'admins',
+		icon: RiShieldKeyholeLine
+	},
+	'admin_role.updated': {
+		label: 'Admin role updated',
+		verb: 'updated admin role',
+		category: 'admins',
+		icon: RiShieldKeyholeLine
+	},
+	'admin_role.deleted': {
+		label: 'Admin role deleted',
+		verb: 'deleted admin role',
+		category: 'admins',
+		tone: 'danger',
+		icon: RiShieldKeyholeLine
+	}
+};
+
+/** What a target is called when its name is not there to say. */
+const unnamed: Record<string, string> = {
+	user: 'a user',
+	user_field: 'a field',
+	user_role: 'a role',
+	application: 'an application',
+	api: 'an API',
+	admin_user: 'an administrator',
+	admin_role: 'an admin role'
+};
+
+/** One entry, ready to show. */
+export type Described = {
+	label: string;
+	/** Who did it: the administrator's address, or "System". */
+	actor: string;
+	verb: string;
+	/** The target's name, set apart in the sentence; empty when the entry
+	    has no target worth naming, such as signing in. */
+	subject: string;
+	/** Whether the subject is a real name rather than "a user". */
+	named: boolean;
+	after: string;
+	detail: string;
+	category: Category;
+	tone: Tone;
+	icon: ComponentType;
+};
+
+/** Signing in names the account in the actor already. */
+const selfTargeted = new Set([
+	'admin.login',
+	'admin.logout',
+	'admin.login_failed',
+	'admin.login_blocked',
+	'admin.mfa_failed',
+	'admin.mfa_enabled',
+	'admin.mfa_replaced',
+	'admin.mfa_disabled',
+	'admin.recovery_codes_regenerated',
+	'user.login',
+	'user.logout',
+	'user.login_failed',
+	'user.login_blocked',
+	'user.registered',
+	'user.password_reset_requested',
+	'user.password_reset',
+	'user.password_changed_self',
+	'user.profile_updated',
+	'user.session_revoked',
+	'user.application_disconnected'
+]);
+
+export function describe(event: ActivityEvent): Described {
+	const known = actions[event.action];
+	const target = event.target;
+
+	let subject = '';
+	let named = false;
+	if (target && !selfTargeted.has(event.action)) {
+		named = Boolean(target.name);
+		subject = target.name || (unnamed[target.type] ?? 'something');
+	}
+
+	if (!known) {
+		return {
+			label: event.action,
+			actor: event.actor || 'System',
+			verb: event.action,
+			subject,
+			named,
+			after: '',
+			detail: event.detail ?? '',
+			category: 'other',
+			tone: 'neutral',
+			icon: RiPulseLine
+		};
+	}
+
+	// "gave shop access to https://api…" reads better naming the API than
+	// saying "an API", when the server said which.
+	let after = known.after ?? '';
+	let detail = event.detail ?? '';
+	if (event.action === 'application.api_authorized' && detail) {
+		after = `access to ${detail}`;
+		detail = '';
+	}
+
+	return {
+		label: known.label,
+		actor: event.actor || 'System',
+		verb: known.verb,
+		subject,
+		named,
+		after,
+		detail,
+		category: known.category,
+		tone: known.tone ?? 'neutral',
+		icon: known.icon
+	};
+}
+
+export const categoryLabels: Record<Category, string> = {
+	access: 'Sign-ins',
+	users: 'Users',
+	roles: 'Roles',
+	applications: 'Applications',
+	apis: 'APIs',
+	admins: 'Administration',
+	other: 'Other'
+};
+
+export function categoryOf(action: string): Category {
+	return actions[action]?.category ?? 'other';
+}

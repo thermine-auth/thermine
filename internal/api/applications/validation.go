@@ -35,6 +35,8 @@ func (r *applicationRequest) applyTo(app *model.Application, creating bool) erro
 	app.Description = r.Description
 	app.LogoURI = r.LogoURI
 	app.ClientURI = r.ClientURI
+	app.PolicyURI = r.PolicyURI
+	app.TosURI = r.TosURI
 	app.TokenEndpointAuthMethod = model.AuthMethod(r.TokenEndpointAuthMethod)
 	app.GrantTypes = r.GrantTypes
 	app.RedirectURIs = r.RedirectURIs
@@ -47,6 +49,7 @@ func (r *applicationRequest) applyTo(app *model.Application, creating bool) erro
 	app.AssertRoles = validate.Flag(r.AssertRoles, app.AssertRoles)
 	app.RequireRoleAssignment = validate.Flag(r.RequireRoleAssignment, app.RequireRoleAssignment)
 	app.Enabled = validate.Flag(r.Enabled, app.Enabled)
+	app.AllowRegistration = validate.Flag(r.AllowRegistration, app.AllowRegistration)
 
 	app.Normalise()
 

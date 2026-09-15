@@ -19,6 +19,8 @@ type applicationResponse struct {
 	Type        model.ApplicationType `json:"type"`
 	LogoURI     string                `json:"logo_uri"`
 	ClientURI   string                `json:"client_uri"`
+	PolicyURI   string                `json:"policy_uri"`
+	TosURI      string                `json:"tos_uri"`
 
 	ClientID         string     `json:"client_id"`
 	ClientIDIssuedAt int64      `json:"client_id_issued_at"`
@@ -41,6 +43,7 @@ type applicationResponse struct {
 	AssertRoles           bool `json:"assert_roles"`
 	RequireRoleAssignment bool `json:"require_role_assignment"`
 	Enabled               bool `json:"enabled"`
+	AllowRegistration     bool `json:"allow_registration"`
 
 	// RoleCount is how many roles the application defines.
 	RoleCount int64     `json:"role_count"`
@@ -56,6 +59,8 @@ func newApplicationResponse(app model.Application, roles int64) applicationRespo
 		Type:                    app.Type,
 		LogoURI:                 app.LogoURI,
 		ClientURI:               app.ClientURI,
+		PolicyURI:               app.PolicyURI,
+		TosURI:                  app.TosURI,
 		ClientID:                app.ClientID,
 		ClientIDIssuedAt:        app.CreatedAt.Unix(),
 		HasSecret:               app.HasSecret() && app.ClientSecretHash != "",
@@ -74,6 +79,7 @@ func newApplicationResponse(app model.Application, roles int64) applicationRespo
 		AssertRoles:             app.AssertRoles,
 		RequireRoleAssignment:   app.RequireRoleAssignment,
 		Enabled:                 app.Enabled,
+		AllowRegistration:       app.AllowRegistration,
 		RoleCount:               roles,
 		CreatedAt:               app.CreatedAt,
 		UpdatedAt:               app.UpdatedAt,

@@ -1,0 +1,133 @@
+// Package mfa answers the endpoints an administrator manages their own second
+// factor with: setting up an authenticator app, replacing it, turning it off
+// where that is allowed, and new recovery codes.
+//
+// Setting up is open to a session half way through signing in when a factor is
+// required — that is the one thing such a session can do. Everything else
+// needs a full session, and a code from the factor itself.
+package mfa
+
+import (
+	"errors"
+	"log/slog"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+
+	"xermess/internal/api/respond"
+	"xermess/internal/api/session"
+	"xermess/internal/auth"
+)
+
+// Handler holds what these endpoints need.
+type Handler struct {
+	auth *auth.Service
+	log  *slog.Logger
+}
+
+// New returns a Handler.
+func New(service *auth.Service, log *slog.Logger) *Handler {
+	return &Handler{auth: service, log: log}
+}
+
+// Status describes the administrator's second factor.
+func (h *Handler) Status(c *gin.Context) {
+	status, err := h.auth.Status(c.Request.Context(), session.Admin(c))
+	if err != nil {
+		respond.Failure(c, h.log, err, "reading two-factor status failed")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"mfa": status})
+}
+
+// Begin starts setting up an authenticator app, and answers the secret and
+// the otpauth URI to show as a QR code.
+func (h *Handler) Begin(c *gin.Context) {
+	var req optionalCodeRequest
+	if err := bindOptional(c, &req); err != nil {
+		respond.BadRequest(c, "the request body is not valid")
+		return
+	}
+
+	enrolment, err := h.auth.BeginTOTP(c.Request.Context(), session.Admin(c), req.Code, requestOf(c))
+	if err != nil {
+		h.fail(c, err, "starting an authenticator set-up failed")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"enrolment": enrolment})
+}
+
+// Confirm finishes setting up with a code from the app, and answers the
+// recovery codes — the only time they are shown.
+func (h *Handler) Confirm(c *gin.Context) {
+	var req codeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respond.BadRequest(c, "the request body is not valid")
+		return
+	}
+
+	token, _ := c.Cookie(session.Cookie)
+
+	codes, err := h.auth.ConfirmTOTP(c.Request.Context(), session.Admin(c), token, req.Code, requestOf(c))
+	if err != nil {
+		h.fail(c, err, "confirming an authenticator failed")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"recovery_codes": codes})
+}
+
+// Disable turns two-factor sign-in off.
+func (h *Handler) Disable(c *gin.Context) {
+	var req codeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respond.BadRequest(c, "the request body is not valid")
+		return
+	}
+
+	token, _ := c.Cookie(session.Cookie)
+
+	if err := h.auth.DisableTOTP(c.Request.Context(), session.Admin(c), token, req.Code, requestOf(c)); err != nil {
+		h.fail(c, err, "turning two-factor sign-in off failed")
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+// RecoveryCodes replaces the recovery codes.
+func (h *Handler) RecoveryCodes(c *gin.Context) {
+	var req codeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respond.BadRequest(c, "the request body is not valid")
+		return
+	}
+
+	codes, err := h.auth.RegenerateRecoveryCodes(c.Request.Context(), session.Admin(c), req.Code, requestOf(c))
+	if err != nil {
+		h.fail(c, err, "regenerating recovery codes failed")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"recovery_codes": codes})
+}
+
+// fail answers the errors of managing a factor with the status each means.
+func (h *Handler) fail(c *gin.Context, err error, note string) {
+	switch {
+	case errors.Is(err, auth.ErrInvalidCode):
+		respond.Error(c, http.StatusBadRequest, err.Error())
+	case errors.Is(err, auth.ErrNotEnrolling), errors.Is(err, auth.ErrMFADisabled):
+		respond.Error(c, http.StatusBadRequest, err.Error())
+	case errors.Is(err, auth.ErrMFAEnabled), errors.Is(err, auth.ErrMFARequired):
+		respond.Error(c, http.StatusConflict, err.Error())
+	default:
+		respond.Failure(c, h.log, err, note)
+	}
+}
+
+func requestOf(c *gin.Context) auth.Request {
+	return auth.Request{IP: c.ClientIP(), UserAgent: c.Request.UserAgent()}
+}

@@ -29,6 +29,9 @@ type adminResponse struct {
 	Permissions       []string               `json:"permissions"`
 	ScopedPermissions map[uuid.UUID][]string `json:"scoped_permissions"`
 	IsSuperAdmin      bool                   `json:"is_super_admin"`
+
+	// MFAEnabled says whether they sign in with a second factor.
+	MFAEnabled bool `json:"mfa_enabled"`
 }
 
 func newAdminResponse(a *model.AdminUser) adminResponse {
@@ -51,6 +54,7 @@ func newAdminResponse(a *model.AdminUser) adminResponse {
 		Permissions:       a.Permissions(),
 		ScopedPermissions: a.ScopedPermissions(),
 		IsSuperAdmin:      a.IsSuperAdmin(),
+		MFAEnabled:        a.HasMFA(),
 	}
 }
 

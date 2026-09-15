@@ -34,6 +34,8 @@ type applicationRequest struct {
 
 	LogoURI   string `json:"logo_uri" validate:"max=512"`
 	ClientURI string `json:"client_uri" validate:"max=512"`
+	PolicyURI string `json:"policy_uri" validate:"max=512"`
+	TosURI    string `json:"tos_uri" validate:"max=512"`
 
 	TokenEndpointAuthMethod string   `json:"token_endpoint_auth_method"`
 	GrantTypes              []string `json:"grant_types"`
@@ -51,6 +53,9 @@ type applicationRequest struct {
 	AssertRoles           *bool `json:"assert_roles"`
 	RequireRoleAssignment *bool `json:"require_role_assignment"`
 	Enabled               *bool `json:"enabled"`
+	// AllowRegistration may be left out too: a new application then offers
+	// registration on its sign-in page.
+	AllowRegistration *bool `json:"allow_registration"`
 }
 
 // clean tidies what can be tidied, so the rules see the values that would
@@ -61,6 +66,8 @@ func (r *applicationRequest) clean() {
 	r.Type = strings.TrimSpace(r.Type)
 	r.LogoURI = strings.TrimSpace(r.LogoURI)
 	r.ClientURI = strings.TrimSpace(r.ClientURI)
+	r.PolicyURI = strings.TrimSpace(r.PolicyURI)
+	r.TosURI = strings.TrimSpace(r.TosURI)
 	r.TokenEndpointAuthMethod = strings.TrimSpace(r.TokenEndpointAuthMethod)
 
 	if r.AccessTokenLifetime == 0 {

@@ -200,3 +200,47 @@ func TestCORSAnswersThePreflightItself(t *testing.T) {
 		t.Error("the preflight reached the route, want it answered by the middleware")
 	}
 }
+
+// The provider endpoints a single-page app calls are open to any origin, and
+// never with credentials; the admin API stays closed to the same origin.
+func TestCORSPublicProviderEndpoints(t *testing.T) {
+	r := gin.New()
+	r.Use(New([]string{panelOrigin}))
+	r.POST("/oauth2/token", func(c *gin.Context) { c.Status(http.StatusOK) })
+	r.GET("/.well-known/jwks.json", func(c *gin.Context) { c.Status(http.StatusOK) })
+	r.GET("/oauth2/authorize", func(c *gin.Context) { c.Status(http.StatusOK) })
+	r.GET("/api/v1/admin/me", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	call := func(method, path string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, nil)
+		req.Header.Set("Origin", "https://spa.example.com")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		return w
+	}
+
+	for _, path := range []string{"/oauth2/token", "/.well-known/jwks.json"} {
+		method := http.MethodGet
+		if path == "/oauth2/token" {
+			method = http.MethodPost
+		}
+
+		w := call(method, path)
+		if got := w.Header().Get("Access-Control-Allow-Origin"); got != "*" {
+			t.Errorf("%s: Allow-Origin = %q, want *", path, got)
+		}
+		if got := w.Header().Get("Access-Control-Allow-Credentials"); got != "" {
+			t.Errorf("%s: Allow-Credentials = %q, want none", path, got)
+		}
+	}
+
+	if w := call(http.MethodOptions, "/oauth2/token"); w.Code != http.StatusNoContent || w.Header().Get("Access-Control-Allow-Origin") != "*" {
+		t.Errorf("token preflight = %d, %q", w.Code, w.Header().Get("Access-Control-Allow-Origin"))
+	}
+
+	for _, path := range []string{"/oauth2/authorize", "/api/v1/admin/me"} {
+		if got := call(http.MethodGet, path).Header().Get("Access-Control-Allow-Origin"); got != "" {
+			t.Errorf("%s: Allow-Origin = %q for an unlisted origin, want none", path, got)
+		}
+	}
+}

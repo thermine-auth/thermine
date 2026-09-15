@@ -17,17 +17,53 @@ func init() {
 	gin.SetMode(gin.TestMode)
 }
 
-// testEngine builds the real server, with its logging discarded.
+// testEngine builds the real public server, with its logging discarded.
 func testEngine(origins ...string) *gin.Engine {
-	cfg := config.Config{Addr: ":0", CORSOrigins: origins}
+	cfg := config.Config{Addr: ":0", CORSOrigins: origins, AccountURL: "http://localhost:5175"}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	r, err := New(cfg, nil, log)
+	r, err := NewPublic(cfg, log, nil)
 	if err != nil {
 		panic(err)
 	}
 
 	return r
+}
+
+// testAdminEngine builds the real admin server.
+func testAdminEngine() *gin.Engine {
+	cfg := config.Config{AdminURL: "http://localhost:5173"}
+
+	r, err := NewAdmin(cfg, nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
+	if err != nil {
+		panic(err)
+	}
+
+	return r
+}
+
+// A path exists on one server only: the admin API is never on the public
+// listener, and the provider never on the admin one.
+func TestServersKeepTheirRoutesApart(t *testing.T) {
+	public, admin := testEngine(), testAdminEngine()
+
+	for _, path := range []string{"/api/v1/admin/me", "/api/v1/admin/setup", "/api/v1/admin/users"} {
+		if w := do(public, http.MethodGet, path, nil); w.Code != http.StatusNotFound {
+			t.Errorf("public GET %s = %d, want 404", path, w.Code)
+		}
+	}
+
+	for _, path := range []string{"/.well-known/openid-configuration", "/oauth2/authorize", "/api/v1/account/me"} {
+		if w := do(admin, http.MethodGet, path, nil); w.Code != http.StatusNotFound {
+			t.Errorf("admin GET %s = %d, want 404", path, w.Code)
+		}
+	}
+
+	for _, r := range []*gin.Engine{public, admin} {
+		if w := do(r, http.MethodGet, "/healthz", nil); w.Code != http.StatusOK {
+			t.Errorf("healthz = %d on one of the servers", w.Code)
+		}
+	}
 }
 
 // do sends a request through the router and returns the response.
@@ -54,10 +90,6 @@ func TestRoutes(t *testing.T) {
 		{
 			name: "health check", method: http.MethodGet, path: "/healthz",
 			wantCode: http.StatusOK, wantBody: map[string]string{"status": "ok"},
-		},
-		{
-			name: "hello", method: http.MethodGet, path: "/api/v1/hello",
-			wantCode: http.StatusOK, wantBody: map[string]string{"hello": "world"},
 		},
 		{
 			name: "unknown path", method: http.MethodGet, path: "/nope",
@@ -132,7 +164,7 @@ func TestForwardedForIsNotTrustedByDefault(t *testing.T) {
 func TestNewRefusesABadTrustedProxy(t *testing.T) {
 	cfg := config.Config{TrustedProxies: []string{"not an address"}}
 
-	if _, err := New(cfg, nil, slog.New(slog.NewTextHandler(io.Discard, nil))); err == nil {
+	if _, err := NewPublic(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), nil); err == nil {
 		t.Error("New() accepted a trusted proxy that is not an address")
 	}
 }

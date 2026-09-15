@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -14,10 +15,15 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"xermess/internal/config"
 	"xermess/internal/database"
+	"xermess/internal/mail"
+	"xermess/internal/oidc"
 	"xermess/internal/store"
 )
 
@@ -36,11 +42,66 @@ const testDSNEnv = "XERMESS_TEST_DB_DSN"
 type liveServer struct {
 	t   *testing.T
 	url string
+	// root is the public server's address: the issuer of its tokens.
+	root string
+	// adminRoot is the admin server's.
+	adminRoot string
+	mail      *mailbox
+}
+
+// testAccountURL is where the provider sends browsers to sign in. Nothing is
+// served there in the tests: they read the redirect and call the account
+// endpoints the page would.
+const testAccountURL = "http://account.test"
+
+// mailbox keeps what the server would have emailed.
+type mailbox struct {
+	mu       sync.Mutex
+	messages []mail.Message
+}
+
+func (m *mailbox) Send(_ context.Context, msg mail.Message) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.messages = append(m.messages, msg)
+	return nil
+}
+
+// wait returns the first message sent to `to`, waiting briefly: the server
+// sends in the background.
+func (m *mailbox) wait(t *testing.T, to string) mail.Message {
+	t.Helper()
+
+	for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		m.mu.Lock()
+		for _, msg := range m.messages {
+			if strings.EqualFold(msg.To, to) {
+				m.mu.Unlock()
+				return msg
+			}
+		}
+		m.mu.Unlock()
+	}
+
+	t.Fatalf("no email to %s", to)
+	return mail.Message{}
 }
 
 // newLiveServer makes an empty database, migrates it, and serves the API on
-// it. The database is dropped when the test ends.
+// it, without a rate limit. The database is dropped when the test ends.
 func newLiveServer(t *testing.T) *liveServer {
+	t.Helper()
+	return newLiveServerLimited(t, 0)
+}
+
+// newLiveServerLimited is newLiveServer with a rate limit, per minute.
+func newLiveServerLimited(t *testing.T, limit int) *liveServer {
+	t.Helper()
+	return newLiveServerWith(t, func(cfg *config.Config) { cfg.RateLimit = limit })
+}
+
+// newLiveServerWith is newLiveServer with the configuration changed first.
+func newLiveServerWith(t *testing.T, change func(*config.Config)) *liveServer {
 	t.Helper()
 
 	dsn := os.Getenv(testDSNEnv)
@@ -77,15 +138,52 @@ func newLiveServer(t *testing.T) *liveServer {
 		t.Fatalf("migrate %s: %v", name, err)
 	}
 
-	router, err := New(config.Config{DB: cfg}, store.New(db), log)
+	// The issuer has to be the address the server answers on, which is only
+	// known once it has a listener: so the listeners come first, and the
+	// routers are built to fit them. Like the real process, it is two
+	// servers: the public one, and the admin one.
+	var publicRouter, adminRouter http.Handler
+	publicServer := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		publicRouter.ServeHTTP(w, r)
+	}))
+	adminServer := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		adminRouter.ServeHTTP(w, r)
+	}))
+	root := "http://" + publicServer.Listener.Addr().String()
+	adminRoot := "http://" + adminServer.Listener.Addr().String()
+
+	mailer := &mailbox{}
+	serverCfg := config.Config{
+		DB:         cfg,
+		Issuer:     root,
+		AccountURL: testAccountURL,
+		AdminURL:   "http://admin.test",
+		SecretKey:  "integration-test-secret-key-0123456789",
+	}
+	change(&serverCfg)
+	st := store.New(db)
+
+	provider, err := oidc.New(context.Background(), serverCfg, st, mailer, log)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	server := httptest.NewServer(router)
-	t.Cleanup(server.Close)
+	publicEngine, err := NewPublic(serverCfg, log, provider)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminEngine, err := NewAdmin(serverCfg, st, log, provider)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicRouter, adminRouter = publicEngine, adminEngine
 
-	return &liveServer{t: t, url: server.URL + "/api/v1/admin"}
+	publicServer.Start()
+	adminServer.Start()
+	t.Cleanup(publicServer.Close)
+	t.Cleanup(adminServer.Close)
+
+	return &liveServer{t: t, url: adminRoot + "/api/v1/admin", root: root, adminRoot: adminRoot, mail: mailer}
 }
 
 // client is one browser: it keeps its own session cookie.

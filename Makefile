@@ -1,185 +1,97 @@
-# xermess — authentication server
-#
-# Run `make` to see every target.
-#
-# First time here?  make setup
-#
-# This file is the index of what can be done; anything longer than a couple of
-# lines lives in scripts/ and is called from here.
+# xermess — run `make` for the list of targets.
 
-# ---------------------------------------------------------------------------
-# Settings
-# ---------------------------------------------------------------------------
+SHELL   := bash
+APPS    := console id
+# Not ./...: that walks into web/*/node_modules.
+PKGS    := ./cmd/... ./internal/... ./migrations/...
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMPOSE := docker compose -f deploy/compose.yaml
 
-BINARY     := xermess
-BIN_DIR    := bin
-SERVER     := ./cmd/xermess
-MIGRATE    := ./cmd/migrate
-MIGRATIONS := migrations
-WEB_DIR    := web
-
-# Go packages, named explicitly: ./... would walk into web/node_modules, which
-# contains a stray Go package.
-PKGS := ./cmd/... ./internal/... ./migrations/...
-
-# Read .env so the database targets know which database to talk to. These stay
-# make variables and are deliberately not exported: exporting would put the
-# database password into the environment of every command make runs, including
-# the tests, which then would not be testing what they think they are.
-ifneq (,$(wildcard .env))
-include .env
-endif
-
-DB_URL ?= $(XERMESS_DB_DSN)
-
-# The migrate command reads .env itself. Passing the database in keeps it on
-# the same database as the psql targets below when DB_URL is overridden on the
-# command line, and changes nothing when it is not.
-MIGRATE_DB := $(if $(DB_URL),XERMESS_DB_DSN="$(DB_URL)")
+# `make full-start prod` and `make full-start -- --prod` both select prod; make
+# itself rejects a bare `--prod` as one of its own options.
+MODE ?= $(if $(filter prod --prod,$(MAKECMDGOALS)),prod,dev)
 
 .DEFAULT_GOAL := help
+.PHONY: help setup full-start dev prod --dev --prod run build test test-integration check \
+	migrate-up migrate-down migrate-status migrate-new db-create db-reset db-psql \
+	web-check web-build deploy-build deploy-up deploy-down deploy-logs clean
 
-.PHONY: help
 help: ## Show this help
-	@awk 'BEGIN {FS = ":.*?## "; print "\nUsage: make <target>\n"} \
-		/^# -+$$/ {next} \
-		/^## / {printf "\n\033[1m%s\033[0m\n", substr($$0, 4); next} \
-		/^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}' \
-		$(MAKEFILE_LIST)
-	@echo ""
+	@awk -F ':.*## ' '/^## / {printf "\n\033[1m%s\033[0m\n", substr($$0, 4)} /^[a-z -]+:.*## / {printf "  \033[36m%-28s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-## Getting started
+## Setup
 
-.PHONY: setup
-setup: ## Set the project up from scratch — checks, .env, database, migrations
-	./scripts/install.sh
+setup: ## Prepare a fresh checkout: .env, database, dependencies
+	@scripts/setup.sh
 
-.PHONY: env
-env: ## Create .env from .env.example if it is missing
-	@test -f .env && echo ".env already exists, leaving it alone" \
-		|| { cp .env.example .env; echo "created .env — check the database settings in it"; }
+## Run
 
-.PHONY: deps
-deps: ## Download Go dependencies
-	go mod download
+full-start: ## Start the API and all web apps — make full-start dev|prod
+	@scripts/start.sh --$(MODE)
 
-## Development
+ifneq (,$(filter full-start,$(MAKECMDGOALS)))
+dev prod --dev --prod: ; @:
+else
+dev: ## Same as make full-start dev
+	@scripts/start.sh --dev
+prod: ## Same as make full-start prod
+	@scripts/start.sh --prod
+endif
 
-.PHONY: run
-run: ## Run the server
-	go run $(SERVER)
+run: ## Start only the API
+	go run ./cmd/xermess
 
-.PHONY: run-migrate
-run-migrate: ## Run the server, applying migrations first
-	XERMESS_DB_MIGRATE=true go run $(SERVER)
-
-.PHONY: build
-build: ## Build the server into bin/
-	go build -o $(BIN_DIR)/$(BINARY) $(SERVER)
-
-.PHONY: release
-release: ## Build for release, with the version stamped in — scripts/build.sh
-	./scripts/build.sh
-
-.PHONY: clean
-clean: ## Remove build artifacts
-	rm -rf $(BIN_DIR)
-	rm -rf $(WEB_DIR)/build $(WEB_DIR)/.svelte-kit
-	go clean
-
-## Database
-#  Migrations are Go files in migrations/. They are Go functions, so only a
-#  binary that imports them can run them: that is ./cmd/migrate, not the goose
-#  command-line tool.
-
-.PHONY: migrate-up
-migrate-up: ## Apply pending migrations
-	$(MIGRATE_DB) go run $(MIGRATE) up
-
-.PHONY: migrate-down
-migrate-down: ## Roll the newest migration back
-	$(MIGRATE_DB) go run $(MIGRATE) down
-
-.PHONY: migrate-status
-migrate-status: ## Show which migrations are applied
-	$(MIGRATE_DB) go run $(MIGRATE) status
-
-.PHONY: migrate-new
-migrate-new: ## Create an empty migration — make migrate-new name=add_x
-	@test -n "$(name)" || { echo "usage: make migrate-new name=add_something"; exit 1; }
-	go tool goose -dir $(MIGRATIONS) create $(name) go
-
-.PHONY: db-create
-db-create: ## Create the database named in .env, if it does not exist
-	@./scripts/db.sh create
-
-.PHONY: db-reset
-db-reset: ## Delete everything in the database and migrate from scratch
-	@./scripts/db.sh reset
-
-.PHONY: db-psql
-db-psql: ## Open a psql session on the database
-	@./scripts/db.sh psql
+build: ## Build the API into bin/xermess
+	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o bin/xermess ./cmd/xermess
 
 ## Quality
 
-.PHONY: check
-check: fmt vet test ## Format, vet and test — run this before pushing
+check: ## Format, vet and test the Go code
+	go fmt $(PKGS) && go vet $(PKGS) && go test $(PKGS)
 
-.PHONY: fmt
-fmt: ## Format Go code
-	go fmt $(PKGS)
-
-.PHONY: vet
-vet: ## Report suspicious code
-	go vet $(PKGS)
-
-.PHONY: test
-test: ## Run tests
+test: ## Run the Go tests
 	go test $(PKGS)
 
-# The integration tests connect to the server in TEST_DB_URL only to create
-# and drop databases of their own, so the one in .env does: its data is never
-# touched.
-TEST_DB_URL ?= $(DB_URL)
+test-integration: ## Run the tests that need Postgres (throwaway databases)
+	@. scripts/lib.sh && load_env && XERMESS_TEST_DB_DSN="$${DB_URL:-$$XERMESS_DB_DSN}" go test -count=1 -run Live ./internal/...
 
-.PHONY: test-integration
-test-integration: ## Run the tests that need Postgres, on throwaway databases
-	XERMESS_TEST_DB_DSN="$(TEST_DB_URL)" go test -count=1 -run Live ./internal/api/
+web-check: ## Lint and type-check the web apps
+	@for app in $(APPS); do echo "==> $$app"; (cd web/$$app && bun run lint && bun run check) || exit 1; done
 
-.PHONY: tidy
-tidy: ## Add missing and remove unused modules
-	go mod tidy
+web-build: ## Build the web apps
+	@for app in $(APPS); do echo "==> $$app"; (cd web/$$app && bun run build) || exit 1; done
 
-## Container
-#  The image is the API only; the admin panel is a separate app. The build
-#  context is the repository root, which is why -f points into scripts/.
+## Database
 
-.PHONY: docker-build
-docker-build: ## Build the container image
-	docker build -f scripts/Dockerfile \
-		--build-arg VERSION=$$(git describe --tags --always --dirty 2>/dev/null || echo dev) \
-		--build-arg COMMIT=$$(git rev-parse --short HEAD 2>/dev/null || echo unknown) \
-		-t $(BINARY):latest .
+migrate-up: ## Apply pending migrations
+	go run ./cmd/migrate up
 
-.PHONY: docker-run
-docker-run: ## Run the image, reading .env for the settings
-	docker run --rm -p 8080:8080 --env-file .env $(BINARY):latest
+migrate-down: ## Roll back the newest migration
+	go run ./cmd/migrate down
 
-## Frontend
+migrate-status: ## Show applied migrations
+	go run ./cmd/migrate status
 
-.PHONY: web-install
-web-install: ## Install frontend dependencies
-	cd $(WEB_DIR) && bun install
+migrate-new: ## Create a migration — make migrate-new name=add_x
+	@test -n "$(name)" || { echo "usage: make migrate-new name=add_x"; exit 1; }
+	go tool goose -dir migrations create $(name) go
 
-.PHONY: web-dev
-web-dev: ## Run the frontend dev server
-	cd $(WEB_DIR) && bun run dev
+db-create db-reset db-psql: ## Create, reset or open the database in .env
+	@scripts/db.sh $(@:db-%=%)
 
-.PHONY: web-build
-web-build: ## Build the frontend
-	cd $(WEB_DIR) && bun run build
+## Deploy
 
-.PHONY: web-start
-web-start: web-build ## Build the frontend and serve it on :4173
-	cd $(WEB_DIR) && bun run preview
+deploy-build: ## Build the production images
+	VERSION=$(VERSION) $(COMPOSE) build
+
+deploy-up: ## Start the production stack in the background
+	VERSION=$(VERSION) $(COMPOSE) up -d --build
+
+deploy-down: ## Stop the production stack
+	$(COMPOSE) down
+
+deploy-logs: ## Follow the API's logs in the production stack
+	$(COMPOSE) logs -f api
+
+clean: ## Remove build output and logs
+	rm -rf bin .logs $(foreach app,$(APPS),web/$(app)/build web/$(app)/.svelte-kit)

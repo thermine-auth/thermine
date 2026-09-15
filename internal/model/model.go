@@ -58,5 +58,11 @@ func All() []any {
 		&ApplicationAPIScope{},
 		&UserRole{},
 		&User{},
+		&SigningKey{},
+		&AuthorizationRequest{},
+		&AuthorizationCode{},
+		&RefreshToken{},
+		&UserSession{},
+		&PasswordReset{},
 	}
 }

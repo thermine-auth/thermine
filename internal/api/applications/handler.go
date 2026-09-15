@@ -16,7 +16,6 @@ import (
 	"github.com/google/uuid"
 
 	"xermess/internal/api/audit"
-	"xermess/internal/api/origin"
 	"xermess/internal/api/respond"
 	"xermess/internal/api/session"
 	"xermess/internal/model"
@@ -28,11 +27,15 @@ type Handler struct {
 	store *store.Store
 	audit audit.Recorder
 	log   *slog.Logger
+
+	// issuer is the provider's: the iss its tokens carry.
+	issuer string
 }
 
-// New returns a Handler.
-func New(st *store.Store, recorder audit.Recorder, log *slog.Logger) *Handler {
-	return &Handler{store: st, audit: recorder, log: log}
+// New returns a Handler. `issuer` is XERMESS_ISSUER, which tokens name the
+// server by.
+func New(st *store.Store, recorder audit.Recorder, log *slog.Logger, issuer string) *Handler {
+	return &Handler{store: st, audit: recorder, log: log, issuer: issuer}
 }
 
 // List returns a page of the applications the administrator can see, sorted
@@ -78,10 +81,11 @@ func (h *Handler) Create(c *gin.Context) {
 	}
 
 	app := &model.Application{
-		Type:        model.ApplicationType(req.Type),
-		Enabled:     true,
-		AssertRoles: true,
-		RequirePKCE: true,
+		Type:              model.ApplicationType(req.Type),
+		Enabled:           true,
+		AssertRoles:       true,
+		RequirePKCE:       true,
+		AllowRegistration: true,
 	}
 	if err := req.applyTo(app, true); err != nil {
 		respond.Failure(c, h.log, err, "checking an application failed")
@@ -298,7 +302,7 @@ func (h *Handler) TokenPreview(c *gin.Context) {
 	request := model.TokenRequest{
 		Application: *app,
 		Requested:   strings.Fields(req.Scope),
-		Issuer:      origin.Issuer(c),
+		Issuer:      h.issuer,
 		Now:         time.Now(),
 	}
 
@@ -318,23 +322,18 @@ func (h *Handler) TokenPreview(c *gin.Context) {
 			return
 		}
 
-		graph, err := h.store.RoleGraph(ctx)
+		roles, err := h.store.EffectiveRoles(ctx, user)
 		if err != nil {
 			respond.Failure(c, h.log, err, "resolving roles failed")
 			return
 		}
 
-		held := make([]uuid.UUID, 0, len(user.Roles))
-		for _, role := range user.Roles {
-			held = append(held, role.ID)
-		}
-
 		request.User = user
-		request.Roles = graph.Effective(held)
+		request.Roles = roles
 	}
 
-	if audience := strings.TrimSpace(req.Audience); audience != "" {
-		api, err := h.store.APIByIdentifier(ctx, audience)
+	if identifier := strings.TrimSpace(req.Audience); identifier != "" {
+		audience, err := h.store.AudienceFor(ctx, app.ID, identifier)
 		if errors.Is(err, store.ErrNotFound) {
 			respond.BadRequest(c, "audience: no API has that identifier")
 			return
@@ -344,26 +343,9 @@ func (h *Handler) TokenPreview(c *gin.Context) {
 			return
 		}
 
-		access, err := h.store.ApplicationAPIAccess(ctx, app.ID)
-		if err != nil {
-			respond.Failure(c, h.log, err, "loading API access failed")
-			return
-		}
-
-		for _, it := range access {
-			if it.API.ID != api.ID {
-				continue
-			}
-
-			request.Authorized = it.Authorized
-			for _, scope := range api.Scopes {
-				if slices.Contains(it.Allowed, scope.ID) {
-					request.Allowed = append(request.Allowed, scope.Name)
-				}
-			}
-		}
-
-		request.API = api
+		request.API = audience.API
+		request.Authorized = audience.Authorized
+		request.Allowed = audience.Allowed
 	}
 
 	c.JSON(http.StatusOK, gin.H{"preview": model.EvaluateToken(request)})

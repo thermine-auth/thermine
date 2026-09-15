@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -26,6 +27,13 @@ type User struct {
 	// HasPassword tells the panel whether a password is set, without telling
 	// it anything about the password.
 	HasPassword bool `gorm:"-" json:"has_password"`
+
+	// LastLoginAt is when the user last signed in to an application.
+	LastLoginAt *time.Time `json:"last_login_at"`
+	// FailedLoginCount and LockedUntil lock the account for a while after
+	// repeated wrong passwords, as for administrators.
+	FailedLoginCount int        `gorm:"not null;default:0" json:"-"`
+	LockedUntil      *time.Time `json:"locked_until"`
 
 	Data map[string]any `gorm:"serializer:json" json:"data"`
 
@@ -62,6 +70,12 @@ func (u *User) SetPassword(password string) error {
 	u.HasPassword = true
 
 	return nil
+}
+
+// CanSignIn reports whether the user may sign in now: active, and not locked
+// after too many wrong passwords.
+func (u User) CanSignIn(now time.Time) bool {
+	return u.IsActive && (u.LockedUntil == nil || now.After(*u.LockedUntil))
 }
 
 func (u User) FullName() string {

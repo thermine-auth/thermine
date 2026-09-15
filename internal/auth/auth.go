@@ -1,5 +1,6 @@
-// Package auth signs administrators in and out, and keeps the record of what
-// they did.
+// Package auth signs administrators in and out — with a password and, when
+// they have one or it is required, a second factor — and keeps the record of
+// what they did.
 package auth
 
 import (
@@ -9,12 +10,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
+	"xermess/internal/jose"
 	"xermess/internal/model"
 	"xermess/internal/store"
 )
@@ -52,16 +55,56 @@ var ErrInvalidCredentials = errors.New("invalid credentials")
 // ErrNoSession is returned when a request carries no usable session.
 var ErrNoSession = errors.New("no active session")
 
+// State is how far a session has got.
+type State string
+
+const (
+	// StateNone is no usable session at all.
+	StateNone State = "none"
+	// StateSignedIn is a session that may use the panel.
+	StateSignedIn State = "signed_in"
+	// StateMFA is a session whose password was right, waiting for a code
+	// from the administrator's authenticator. It can do nothing but give one.
+	StateMFA State = "mfa"
+	// StateEnroll is a session whose password was right, for an
+	// administrator who has to set up two-factor sign-in before anything
+	// else. It can do nothing but that.
+	StateEnroll State = "enroll"
+)
+
+// How long a session may wait half signed in. Long enough to find a phone, or
+// to set an authenticator up; not so long that a password alone keeps a door
+// ajar.
+const (
+	challengeLifetime = 10 * time.Minute
+	enrolmentLifetime = 30 * time.Minute
+)
+
 // Service signs administrators in and out. Every query it makes goes through
 // the store, so this file is about what signing in means rather than about
 // how the rows are fetched.
 type Service struct {
-	store *store.Store
+	store  *store.Store
+	sealer *jose.Sealer
+	log    *slog.Logger
+
+	// mfaRequired makes every administrator set up a second factor.
+	mfaRequired bool
+	// issuer names the panel in authenticator apps.
+	issuer string
 }
 
-// New returns a Service backed by the given store.
-func New(st *store.Store) *Service {
-	return &Service{store: st}
+// New returns a Service backed by the given store. `sealer` encrypts TOTP
+// secrets; `mfaRequired` makes two-factor sign-in compulsory; `issuer` is what
+// authenticator apps list the account under; `log` reports what cannot be
+// returned, such as a failed audit write.
+func New(st *store.Store, sealer *jose.Sealer, log *slog.Logger, mfaRequired bool, issuer string) *Service {
+	return &Service{store: st, sealer: sealer, log: log, mfaRequired: mfaRequired, issuer: issuer}
+}
+
+// MFARequired reports whether every administrator must use a second factor.
+func (s *Service) MFARequired() bool {
+	return s.mfaRequired
 }
 
 // Request describes where a call came from, which is recorded on the session
@@ -74,7 +117,11 @@ type Request struct {
 // Login checks the credentials and starts a session. The token it returns is
 // the only copy: the database keeps a hash of it, so a leaked database cannot
 // be used to sign in.
-func (s *Service) Login(ctx context.Context, username, password string, req Request) (string, *model.AdminUser, error) {
+//
+// A right password is not always a finished sign-in. An administrator with a
+// second factor gets a session in StateMFA, and one who must set a factor up
+// gets StateEnroll; either can do nothing else until that step is done.
+func (s *Service) Login(ctx context.Context, username, password string, req Request) (string, *model.AdminUser, State, error) {
 	admin, err := s.store.AdminByUsername(ctx, username)
 
 	switch {
@@ -83,15 +130,15 @@ func (s *Service) Login(ctx context.Context, username, password string, req Requ
 		// take the same time to answer.
 		_ = bcrypt.CompareHashAndPassword(dummyHash(), []byte(password))
 		s.record(ctx, nil, username, "admin.login_failed", req, "unknown username")
-		return "", nil, ErrInvalidCredentials
+		return "", nil, StateNone, ErrInvalidCredentials
 	case err != nil:
-		return "", nil, err
+		return "", nil, StateNone, err
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(password)); err != nil {
 		locked, err := s.store.RecordFailedLogin(ctx, admin, time.Now(), MaxFailedLogins, LockoutDuration)
 		if err != nil {
-			return "", nil, err
+			return "", nil, StateNone, err
 		}
 
 		reason := "wrong password"
@@ -100,7 +147,7 @@ func (s *Service) Login(ctx context.Context, username, password string, req Requ
 		}
 		s.record(ctx, &admin.ID, admin.Username, "admin.login_failed", req, reason)
 
-		return "", nil, ErrInvalidCredentials
+		return "", nil, StateNone, ErrInvalidCredentials
 	}
 
 	if !admin.CanSignIn(time.Now()) {
@@ -110,63 +157,108 @@ func (s *Service) Login(ctx context.Context, username, password string, req Requ
 		}
 		s.record(ctx, &admin.ID, admin.Username, "admin.login_blocked", req, reason)
 
-		return "", nil, ErrInvalidCredentials
+		return "", nil, StateNone, ErrInvalidCredentials
+	}
+
+	state, lifetime := StateSignedIn, SessionLifetime
+	switch {
+	case admin.HasMFA():
+		state, lifetime = StateMFA, challengeLifetime
+	case s.mfaRequired:
+		state, lifetime = StateEnroll, enrolmentLifetime
 	}
 
 	token, err := newToken()
 	if err != nil {
-		return "", nil, err
+		return "", nil, StateNone, err
 	}
 
 	session := model.AdminUserSession{
 		AdminUserID: admin.ID,
 		TokenHash:   hashToken(token),
-		ExpiresAt:   time.Now().Add(SessionLifetime),
-		// There is no second factor yet. When there is, this starts false and
-		// is set once the factor is cleared.
-		MFAPassed: true,
-		UserAgent: req.UserAgent,
-		IP:        req.IP,
+		ExpiresAt:   time.Now().Add(lifetime),
+		MFAPassed:   state == StateSignedIn,
+		UserAgent:   req.UserAgent,
+		IP:          req.IP,
 	}
 	if err := s.store.CreateSession(ctx, &session); err != nil {
-		return "", nil, err
+		return "", nil, StateNone, err
 	}
 
-	if err := s.store.MarkAdminSignedIn(ctx, admin, time.Now(), req.IP); err != nil {
-		return "", nil, err
+	if state == StateSignedIn {
+		if err := s.signedIn(ctx, admin, req, ""); err != nil {
+			return "", nil, StateNone, err
+		}
 	}
 
-	s.record(ctx, &admin.ID, admin.Username, "admin.login", req, "")
-
-	return token, admin, nil
+	return token, admin, state, nil
 }
 
-// Authenticate returns the administrator the token belongs to. It is what the
-// middleware calls on every request.
-func (s *Service) Authenticate(ctx context.Context, token string) (*model.AdminUser, error) {
+// signedIn finishes a sign-in: the last sign-in is recorded, the wrong
+// passwords before it forgotten, and the log told how it happened.
+func (s *Service) signedIn(ctx context.Context, admin *model.AdminUser, req Request, method string) error {
+	if err := s.store.MarkAdminSignedIn(ctx, admin, time.Now(), req.IP); err != nil {
+		return err
+	}
+
+	s.recordWith(ctx, &admin.ID, admin.Username, "admin.login", req, map[string]any{"second_factor": method})
+
+	return nil
+}
+
+// Session returns the session a token carries, whatever state it is in, with
+// its administrator.
+func (s *Service) Session(ctx context.Context, token string) (*model.AdminUser, *model.AdminUserSession, State, error) {
 	if token == "" {
-		return nil, ErrNoSession
+		return nil, nil, StateNone, ErrNoSession
 	}
 
 	session, err := s.store.SessionByTokenHash(ctx, hashToken(token))
-
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		return nil, ErrNoSession
+		return nil, nil, StateNone, ErrNoSession
 	case err != nil:
-		return nil, err
+		return nil, nil, StateNone, err
 	}
 
-	if !session.IsActive(time.Now()) {
-		return nil, ErrNoSession
+	now := time.Now()
+	if session.RevokedAt != nil || !now.Before(session.ExpiresAt) {
+		return nil, nil, StateNone, ErrNoSession
 	}
 
 	admin, err := s.store.AdminByID(ctx, session.AdminUserID)
-	if err != nil {
-		return nil, ErrNoSession
+	if err != nil || !admin.CanSignIn(now) {
+		return nil, nil, StateNone, ErrNoSession
 	}
 
-	if !admin.CanSignIn(time.Now()) {
+	switch {
+	case session.MFAPassed && s.mfaRequired && !admin.HasMFA():
+		// Signed in before two-factor sign-in was required, or had it reset:
+		// the session is good for setting it up and nothing else.
+		return admin, session, StateEnroll, nil
+	case session.MFAPassed:
+		return admin, session, StateSignedIn, nil
+	case admin.HasMFA():
+		return admin, session, StateMFA, nil
+	case s.mfaRequired:
+		return admin, session, StateEnroll, nil
+	default:
+		// Waiting for a factor that has since been removed, where none is
+		// required: sign in again.
+		return nil, nil, StateNone, ErrNoSession
+	}
+}
+
+// Authenticate returns the administrator a fully signed-in session belongs
+// to. It is what the middleware calls on every request to the panel's API; a
+// session half way through signing in is no session here.
+func (s *Service) Authenticate(ctx context.Context, token string) (*model.AdminUser, error) {
+	admin, _, state, err := s.Session(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+
+	if state != StateSignedIn {
 		return nil, ErrNoSession
 	}
 
@@ -203,6 +295,17 @@ func (s *Service) Logout(ctx context.Context, token string, req Request) error {
 // not fail the request that caused it, so the error is swallowed on purpose;
 // the caller has already done the thing being recorded.
 func (s *Service) record(ctx context.Context, adminID *uuid.UUID, actor, action string, req Request, note string) {
+	var metadata map[string]any
+	if note != "" {
+		metadata = map[string]any{"reason": note}
+	}
+
+	s.recordWith(ctx, adminID, actor, action, req, metadata)
+}
+
+// recordWith is record with metadata of the caller's choosing. Empty values are
+// left out.
+func (s *Service) recordWith(ctx context.Context, adminID *uuid.UUID, actor, action string, req Request, metadata map[string]any) {
 	entry := model.AuditLog{
 		AdminUserID: adminID,
 		ActorEmail:  actor,
@@ -211,14 +314,23 @@ func (s *Service) record(ctx context.Context, adminID *uuid.UUID, actor, action 
 		IP:          req.IP,
 		UserAgent:   req.UserAgent,
 	}
-	if note != "" {
-		entry.Metadata = map[string]any{"reason": note}
+	for key, value := range metadata {
+		if value != "" && value != nil {
+			if entry.Metadata == nil {
+				entry.Metadata = map[string]any{}
+			}
+			entry.Metadata[key] = value
+		}
 	}
 	if adminID != nil {
 		entry.TargetID = adminID.String()
 	}
 
-	_ = s.store.WriteAudit(ctx, &entry)
+	// The action itself has happened; a lost log line must not undo it, but
+	// it must not go unnoticed either.
+	if err := s.store.WriteAudit(ctx, &entry); err != nil {
+		s.log.Error("writing the activity log failed", "error", err, "action", action)
+	}
 }
 
 // newToken returns a session token: 256 bits of randomness, hex encoded.

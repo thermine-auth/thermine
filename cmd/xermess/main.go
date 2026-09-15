@@ -2,16 +2,24 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log/slog"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"xermess/internal/api"
 	"xermess/internal/config"
 	"xermess/internal/database"
+	"xermess/internal/mail"
+	"xermess/internal/oidc"
 	"xermess/internal/store"
 )
 
-// version and commit are stamped in at build time by scripts/build.sh and
+// version and commit are stamped in at build time by `make build` and
 // the Dockerfile, so a running server can say which build it is. A plain
 // `go run` leaves them as they are.
 var (
@@ -54,17 +62,73 @@ func run(log *slog.Logger) error {
 		}
 	}
 
-	log.Info("server listening", "addr", cfg.Addr)
-
-	// The store is the only thing that queries the database; the server is
+	// The store is the only thing that queries the database; the servers are
 	// handed that rather than the connection itself.
-	//
-	// Run blocks until the server stops. Gin listens for us: Run is a wrapper
-	// around net/http's ListenAndServe.
-	server, err := api.New(cfg, store.New(db), log)
+	st := store.New(db)
+
+	// The provider loads its signing keys, and makes any that are missing,
+	// before anything is served: a wrong XERMESS_SECRET_KEY stops the server
+	// here rather than failing the first sign-in.
+	provider, err := oidc.New(context.Background(), cfg, st, mail.New(cfg.Mail, log), log)
 	if err != nil {
 		return err
 	}
 
-	return server.Run(cfg.Addr)
+	public, err := api.NewPublic(cfg, log, provider)
+	if err != nil {
+		return err
+	}
+
+	admin, err := api.NewAdmin(cfg, st, log, provider)
+	if err != nil {
+		return err
+	}
+
+	// Signing keys rotate while the server runs; stopping the server stops it.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go provider.MaintainKeys(ctx)
+
+	return serve(ctx, log, []*http.Server{
+		{Addr: cfg.Addr, Handler: public, ReadHeaderTimeout: 10 * time.Second},
+		{Addr: cfg.AdminAddr, Handler: admin, ReadHeaderTimeout: 10 * time.Second},
+	})
+}
+
+// shutdownGrace is how long requests under way get to finish when the process
+// is told to stop.
+const shutdownGrace = 15 * time.Second
+
+// serve runs the servers until one fails or the process is told to stop, then
+// stops them all, letting requests under way finish. A container runtime sends
+// SIGTERM before it kills a container, so a deploy does not cut sign-ins off
+// half way.
+func serve(ctx context.Context, log *slog.Logger, servers []*http.Server) error {
+	failed := make(chan error, len(servers))
+	for i, server := range servers {
+		name := []string{"public", "admin"}[i]
+		log.Info("server listening", "server", name, "addr", server.Addr)
+
+		go func() {
+			if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				failed <- err
+			}
+		}()
+	}
+
+	var err error
+	select {
+	case err = <-failed:
+	case <-ctx.Done():
+		log.Info("shutting down")
+	}
+
+	shutdown, cancel := context.WithTimeout(context.Background(), shutdownGrace)
+	defer cancel()
+
+	for _, server := range servers {
+		_ = server.Shutdown(shutdown)
+	}
+
+	return err
 }

@@ -1,0 +1,77 @@
+# Production: Postgres, the API, the id and console apps, and Caddy in front.
+# Only Caddy publishes ports. See README.md.
+#
+#   cp deploy/.env.example deploy/.env    # fill it in
+#   make deploy-up
+
+name: xermess
+
+x-web: &web
+  restart: unless-stopped
+  depends_on: [api]
+  networks: [internal]
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: xermess
+      POSTGRES_USER: xermess
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+    healthcheck:
+      test: pg_isready -U xermess
+      interval: 2s
+      retries: 30
+    volumes: [postgres:/var/lib/postgresql/data]
+    networks: [internal]
+
+  api:
+    build: { context: .., dockerfile: deploy/docker/api.Dockerfile, args: { VERSION: "${VERSION:-dev}" } }
+    restart: unless-stopped
+    depends_on: { postgres: { condition: service_healthy } }
+    environment:
+      XERMESS_ISSUER: ${PUBLIC_URL:?set PUBLIC_URL in deploy/.env}
+      XERMESS_ADMIN_URL: ${ADMIN_URL:?set ADMIN_URL in deploy/.env}
+      XERMESS_SECRET_KEY: ${XERMESS_SECRET_KEY:?set XERMESS_SECRET_KEY in deploy/.env}
+      XERMESS_DB_DSN: postgres://xermess:${POSTGRES_PASSWORD}@postgres:5432/xermess?sslmode=disable
+      # Caddy and the apps' renderers forward the caller's address from here.
+      XERMESS_TRUSTED_PROXIES: 172.30.0.0/24
+      XERMESS_SMTP_HOST: ${XERMESS_SMTP_HOST:-}
+      XERMESS_SMTP_PORT: ${XERMESS_SMTP_PORT:-587}
+      XERMESS_SMTP_USERNAME: ${XERMESS_SMTP_USERNAME:-}
+      XERMESS_SMTP_PASSWORD: ${XERMESS_SMTP_PASSWORD:-}
+      XERMESS_SMTP_FROM: ${XERMESS_SMTP_FROM:-}
+    networks: [internal]
+
+  id:
+    <<: *web
+    build: { context: ../web/id, dockerfile: ../../deploy/docker/web.Dockerfile }
+    environment:
+      ORIGIN: ${PUBLIC_URL}
+      API_URL: http://api:8080
+
+  console:
+    <<: *web
+    build: { context: ../web/console, dockerfile: ../../deploy/docker/web.Dockerfile }
+    environment:
+      ORIGIN: ${ADMIN_URL}
+      API_URL: http://api:8081
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on: [id, console]
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy:/data
+    networks: [internal]
+
+networks:
+  internal:
+    ipam: { config: [{ subnet: 172.30.0.0/24 }] }
+
+volumes:
+  postgres:
+  caddy:

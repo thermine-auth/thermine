@@ -17,6 +17,7 @@ import (
 	"xermess/internal/api/audit"
 	"xermess/internal/api/respond"
 	"xermess/internal/api/session"
+	"xermess/internal/auth"
 	"xermess/internal/model"
 	"xermess/internal/store"
 )
@@ -24,13 +25,14 @@ import (
 // Handler holds what these endpoints need.
 type Handler struct {
 	store *store.Store
+	auth  *auth.Service
 	audit audit.Recorder
 	log   *slog.Logger
 }
 
 // New returns a Handler.
-func New(st *store.Store, recorder audit.Recorder, log *slog.Logger) *Handler {
-	return &Handler{store: st, audit: recorder, log: log}
+func New(st *store.Store, service *auth.Service, recorder audit.Recorder, log *slog.Logger) *Handler {
+	return &Handler{store: st, auth: service, audit: recorder, log: log}
 }
 
 // List returns a page of administrators, newest first.
@@ -136,6 +138,31 @@ func (h *Handler) answer(c *gin.Context, status int, admin *model.AdminUser) {
 	}
 
 	c.JSON(status, gin.H{"admin": newAdminResponse(*stored)})
+}
+
+// ResetMFA removes another administrator's second factor and signs them out
+// everywhere, for someone who lost both their phone and their recovery codes.
+// Your own is managed from your profile, with a code: resetting it here would
+// be a way round needing one.
+func (h *Handler) ResetMFA(c *gin.Context) {
+	admin, ok := h.find(c)
+	if !ok {
+		return
+	}
+
+	if admin.ID == session.Admin(c).ID {
+		respond.Conflict(c, "you cannot reset your own two-factor sign-in here; manage it from your profile")
+		return
+	}
+
+	if err := h.auth.ResetMFA(c.Request.Context(), admin); err != nil {
+		respond.Failure(c, h.log, err, "resetting two-factor sign-in failed")
+		return
+	}
+
+	h.audit.Record(c, "admin.mfa_reset", targetType, admin.ID.String())
+
+	h.answer(c, http.StatusOK, admin)
 }
 
 // Delete removes an administrator for good. Nobody can remove themselves:

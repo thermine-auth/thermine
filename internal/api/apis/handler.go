@@ -12,10 +12,10 @@ import (
 	"github.com/google/uuid"
 
 	"xermess/internal/api/audit"
-	"xermess/internal/api/origin"
 	"xermess/internal/api/respond"
 	"xermess/internal/api/session"
 	"xermess/internal/model"
+	"xermess/internal/oidc"
 	"xermess/internal/store"
 )
 
@@ -24,11 +24,15 @@ type Handler struct {
 	store *store.Store
 	audit audit.Recorder
 	log   *slog.Logger
+
+	// issuer is the provider's: the iss its tokens carry.
+	issuer string
 }
 
-// New returns a Handler.
-func New(st *store.Store, recorder audit.Recorder, log *slog.Logger) *Handler {
-	return &Handler{store: st, audit: recorder, log: log}
+// New returns a Handler. `issuer` is XERMESS_ISSUER, which tokens name the
+// server by.
+func New(st *store.Store, recorder audit.Recorder, log *slog.Logger, issuer string) *Handler {
+	return &Handler{store: st, audit: recorder, log: log, issuer: issuer}
 }
 
 // List returns every API matching the search, sorted by name, with its scopes
@@ -205,8 +209,8 @@ func (h *Handler) details(c *gin.Context) (apiDetails, error) {
 	return apiDetails{
 		applications: applications,
 		roles:        roles,
-		issuer:       origin.Issuer(c),
-		jwksURI:      origin.JWKSURI(c),
+		issuer:       h.issuer,
+		jwksURI:      h.issuer + oidc.PathJWKS,
 	}, nil
 }
 
@@ -216,7 +220,7 @@ func (h *Handler) withCount(c *gin.Context, api *model.API) apiResponse {
 	details, err := h.details(c)
 	if err != nil {
 		h.log.Error("counting API applications and roles failed", "error", err)
-		details = apiDetails{issuer: origin.Issuer(c), jwksURI: origin.JWKSURI(c)}
+		details = apiDetails{issuer: h.issuer, jwksURI: h.issuer + oidc.PathJWKS}
 	}
 
 	return newAPIResponse(*api, details)

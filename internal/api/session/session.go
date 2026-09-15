@@ -63,6 +63,25 @@ func Require(service *auth.Service) gin.HandlerFunc {
 	}
 }
 
+// RequireSetup lets through a signed-in administrator, and one who is half
+// signed in waiting to set up a second factor — and nobody else. It guards
+// the endpoints that set a factor up, which is all such a session may do.
+func RequireSetup(service *auth.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		token, _ := c.Cookie(Cookie)
+
+		user, _, state, err := service.Session(c.Request.Context(), token)
+		if err != nil || (state != auth.StateSignedIn && state != auth.StateEnroll) {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "not signed in"})
+			return
+		}
+
+		c.Set(key, user)
+
+		c.Next()
+	}
+}
+
 // Can refuses the request unless the signed-in administrator holds a role
 // granting the permission. It goes after Require, which loads the roles.
 func Can(permission string) gin.HandlerFunc {

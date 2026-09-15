@@ -1,24 +1,35 @@
-// Package api builds the HTTP server: the middleware every request passes
-// through, and the table of which handler answers which path.
+// Package api builds the HTTP servers: the middleware every request passes
+// through, and the tables of which handler answers which path.
+//
+// There are two servers, on two listeners, and a path exists on only one of
+// them. The public server is the OAuth 2.0 / OpenID Connect provider and the
+// account API the id app calls: it is meant to face the internet. The admin
+// server is the admin API the console calls, and nothing else: it is meant to be
+// reachable only from where administrators work. Keeping them apart is what
+// makes "the admin panel is internal" true of the API too, rather than only of
+// the page that calls it.
 //
 // The handlers themselves live one directory down, one package per subject:
 // auth signs administrators in, users manages user records, fields the
 // columns those records are made of, applications the OAuth clients that sign
 // users in, roles the roles users hold in each application, admins and
 // adminroles the administrators and what they may do, activity reports on
-// what has happened. Each of those packages is the same four files — the
-// handler, the requests it accepts, the answers it gives, and the rules it
-// holds them to — so finding your way around a new one is the same as finding
-// your way around the last.
+// what has happened, oauth and account are the provider and the users' own
+// API. Each of those packages is the same four files — the handler, the
+// requests it accepts, the answers it gives, and the rules it holds them to —
+// so finding your way around a new one is the same as finding your way
+// around the last.
 package api
 
 import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
+	"xermess/internal/api/account"
 	"xermess/internal/api/activity"
 	"xermess/internal/api/adminroles"
 	"xermess/internal/api/admins"
@@ -27,24 +38,97 @@ import (
 	"xermess/internal/api/audit"
 	apiauth "xermess/internal/api/auth"
 	"xermess/internal/api/cors"
+	"xermess/internal/api/csrf"
 	"xermess/internal/api/fields"
+	"xermess/internal/api/keys"
+	"xermess/internal/api/mfa"
 	"xermess/internal/api/middleware"
+	"xermess/internal/api/oauth"
+	"xermess/internal/api/ratelimit"
 	"xermess/internal/api/roles"
 	"xermess/internal/api/session"
 	"xermess/internal/api/setup"
 	"xermess/internal/api/users"
 	"xermess/internal/auth"
 	"xermess/internal/config"
+	"xermess/internal/jose"
 	"xermess/internal/model"
+	"xermess/internal/oidc"
 	"xermess/internal/store"
 )
 
-// New builds the server: middleware first, in the order every request passes
-// through them, then the routes.
+// NewPublic builds the public server: the provider, the account API, and a
+// health check. `provider` is built by the caller because building it reads
+// the signing keys from the database.
+func NewPublic(cfg config.Config, log *slog.Logger, provider *oidc.Service) (*gin.Engine, error) {
+	r, err := engine(cfg, log)
+	if err != nil {
+		return nil, err
+	}
+
+	registerPublicRoutes(r, publicHandlers{
+		oauth:   oauth.New(provider, log, cfg.SecureUserCookies),
+		account: account.New(provider, log, cfg.SecureUserCookies),
+		limit:   ratelimit.New(cfg.RateLimit).Middleware(),
+		csrf:    csrf.New(allowed(cfg.AccountURL, cfg.CORSOrigins)),
+	})
+
+	return r, nil
+}
+
+// NewAdmin builds the admin server: the admin API, and a health check.
+// `provider` is the same provider the public server answers with, so rotating
+// its signing keys here takes effect there at once.
+func NewAdmin(cfg config.Config, st *store.Store, log *slog.Logger, provider *oidc.Service) (*gin.Engine, error) {
+	r, err := engine(cfg, log)
+	if err != nil {
+		return nil, err
+	}
+
+	sealer, err := jose.NewSealer(cfg.SecretKey)
+	if err != nil {
+		return nil, err
+	}
+
+	service := auth.New(st, sealer, log, cfg.AdminMFARequired, adminIssuer(cfg.AdminURL))
+	recorder := audit.New(st, log)
+
+	registerAdminRoutes(r, service, adminHandlers{
+		auth:         apiauth.New(service, st, log, cfg.SecureAdminCookies),
+		mfa:          mfa.New(service, log),
+		setup:        setup.New(st, log),
+		users:        users.New(st, recorder, log),
+		fields:       fields.New(st, recorder, log),
+		roles:        roles.New(st, recorder, log),
+		admins:       admins.New(st, service, recorder, log),
+		adminRoles:   adminroles.New(st, recorder, log),
+		applications: applications.New(st, recorder, log, cfg.Issuer),
+		apis:         apis.New(st, recorder, log, cfg.Issuer),
+		activity:     activity.New(st, log),
+		keys:         keys.New(provider, recorder, log),
+		limit:        ratelimit.New(cfg.RateLimit).Middleware(),
+		csrf:         csrf.New(allowed(cfg.AdminURL, cfg.CORSOrigins)),
+	})
+
+	return r, nil
+}
+
+// adminIssuer is what authenticator apps list an administrator's account
+// under: the panel's host, so staff with several installations can tell them
+// apart.
+func adminIssuer(adminURL string) string {
+	if host := strings.TrimPrefix(strings.TrimPrefix(config.Origin(adminURL), "https://"), "http://"); host != "" {
+		return "xermess (" + host + ")"
+	}
+	return "xermess admin"
+}
+
+// engine is what both servers start from: middleware first, in the order
+// every request passes through them.
 //
 // gin.New starts with no middleware, unlike gin.Default, which adds Gin's own
 // logger. We want the slog one instead, so the whole server logs the same way.
-func New(cfg config.Config, st *store.Store, log *slog.Logger) (*gin.Engine, error) {
+func engine(cfg config.Config, log *slog.Logger) (*gin.Engine, error) {
 	r := gin.New()
 
 	// Gin believes every X-Forwarded-For header unless told otherwise, which
@@ -57,28 +141,27 @@ func New(cfg config.Config, st *store.Store, log *slog.Logger) (*gin.Engine, err
 	// built here and handed to the chain that puts it in order.
 	r.Use(middleware.Chain(log, cors.New(cfg.CORSOrigins))...)
 
-	service := auth.New(st)
-	recorder := audit.New(st, log)
-
-	registerRoutes(r, service, handlers{
-		auth:         apiauth.New(service, st, log, cfg.SecureCookies),
-		setup:        setup.New(st, log),
-		users:        users.New(st, recorder, log),
-		fields:       fields.New(st, recorder, log),
-		roles:        roles.New(st, recorder, log),
-		admins:       admins.New(st, recorder, log),
-		adminRoles:   adminroles.New(st, recorder, log),
-		applications: applications.New(st, recorder, log),
-		apis:         apis.New(st, recorder, log),
-		activity:     activity.New(st, log),
-	})
-
 	return r, nil
 }
 
-// handlers is one of each, so the route table below reads as a table.
-type handlers struct {
+// allowed is the origins that may change things through a server's API: the
+// origin of the app it serves, and any extra CORS origin configured.
+func allowed(appURL string, extra []string) []string {
+	return append([]string{config.Origin(appURL)}, extra...)
+}
+
+// publicHandlers and adminHandlers are one of each, so the route tables below
+// read as tables.
+type publicHandlers struct {
+	oauth   *oauth.Handler
+	account *account.Handler
+	limit   gin.HandlerFunc
+	csrf    gin.HandlerFunc
+}
+
+type adminHandlers struct {
 	auth         *apiauth.Handler
+	mfa          *mfa.Handler
 	setup        *setup.Handler
 	users        *users.Handler
 	fields       *fields.Handler
@@ -88,32 +171,105 @@ type handlers struct {
 	applications *applications.Handler
 	apis         *apis.Handler
 	activity     *activity.Handler
+	keys         *keys.Handler
+	limit        gin.HandlerFunc
+	csrf         gin.HandlerFunc
 }
 
-// registerRoutes mounts every route. This is the whole API surface: what a
-// path does is in the handler, but that a path exists is only ever here.
-func registerRoutes(r *gin.Engine, service *auth.Service, h handlers) {
+// registerPublicRoutes mounts every public route. What a path does is in the
+// handler, but that a path exists — and on which server — is only ever here.
+func registerPublicRoutes(r *gin.Engine, h publicHandlers) {
 	r.GET("/healthz", health)
 
-	v1 := r.Group("/api/v1")
-	{
-		v1.GET("/hello", hello)
+	// The OAuth 2.0 and OpenID Connect provider. These paths are fixed by the
+	// discovery document rather than versioned with the API: every client
+	// library finds them from there.
+	r.GET(oidc.PathDiscovery, h.oauth.Discovery)
+	r.GET(oidc.PathJWKS, h.oauth.JWKS)
+	r.GET(oidc.PathAuthorize, h.oauth.Authorize)
+	r.POST(oidc.PathAuthorize, h.oauth.Authorize)
+	r.POST(oidc.PathToken, h.oauth.Token)
+	r.GET(oidc.PathUserInfo, h.oauth.UserInfo)
+	r.POST(oidc.PathUserInfo, h.oauth.UserInfo)
+	r.GET(oidc.PathLogout, h.oauth.Logout)
+	r.POST(oidc.PathLogout, h.oauth.Logout)
+	r.POST(oidc.PathRevoke, h.oauth.Revoke)
+	r.POST(oidc.PathIntrospect, h.oauth.Introspect)
 
+	// Everything under /api/v1 is called by the id app with the user's
+	// session cookie, so it only takes changes from the id app's origin.
+	v1 := r.Group("/api/v1", h.csrf)
+	{
+		// What the id app calls. Signing in needs no session: it is how a
+		// user gets one, and what a page may do is decided by the sign-in
+		// handle it was given, and by the password. The routes that take a
+		// password or send an email are rate limited per address.
+		accounts := v1.Group("/account")
+		accounts.GET("/requests/:handle", h.account.Request)
+		accounts.GET("/applications/:client_id", h.account.Application)
+		accounts.POST("/login", h.limit, h.account.Login)
+		accounts.POST("/register", h.limit, h.account.Register)
+		accounts.POST("/forgot-password", h.limit, h.account.ForgotPassword)
+		accounts.GET("/reset-password", h.account.CheckReset)
+		accounts.POST("/reset-password", h.limit, h.account.ResetPassword)
+		accounts.POST("/logout", h.account.Logout)
+
+		// A user managing their own account: only ever the one whose session
+		// the request carries.
+		own := accounts.Group("", h.account.RequireSession)
+		own.GET("/me", h.account.Me)
+		own.PATCH("/me", h.account.UpdateMe)
+		own.POST("/password", h.limit, h.account.ChangePassword)
+		own.GET("/sessions", h.account.Sessions)
+		own.DELETE("/sessions/:id", h.account.EndSession)
+		own.GET("/connected-applications", h.account.Applications)
+		own.DELETE("/connected-applications/:client_id", h.account.Disconnect)
+	}
+
+	r.NoRoute(notFound)
+}
+
+// registerAdminRoutes mounts every admin route. None of them is on the public
+// server.
+func registerAdminRoutes(r *gin.Engine, service *auth.Service, h adminHandlers) {
+	r.GET("/healthz", health)
+
+	// Everything here is called by the console with the administrator's session
+	// cookie, so it only takes changes from the console's origin.
+	v1 := r.Group("/api/v1", h.csrf)
+	{
 		// Setting the panel up and signing in are the routes that cannot
 		// require a session: before the first there is no account, and before
 		// the second no way to prove one. Creating an administrator is
 		// refused as soon as there is one, which is what keeps the first of
 		// those from being a way in.
 		v1.GET("/admin/setup", h.setup.Status)
-		v1.POST("/admin/setup", h.setup.Create)
-		v1.POST("/admin/auth/login", h.auth.Login)
+		v1.POST("/admin/setup", h.limit, h.setup.Create)
+		v1.POST("/admin/auth/login", h.limit, h.auth.Login)
+
+		// Signing in, the rest of the way. The state says which step a
+		// session is at; a code finishes a sign-in waiting for one; signing
+		// out works at any step.
+		v1.GET("/admin/auth/session", h.auth.State)
+		v1.POST("/admin/auth/mfa", h.limit, h.auth.VerifyMFA)
+		v1.POST("/admin/auth/logout", h.auth.Logout)
+
+		// Setting up an authenticator: for a signed-in administrator, and for
+		// one who has to before they may do anything else.
+		setup := v1.Group("/admin/mfa", session.RequireSetup(service))
+		setup.GET("", h.mfa.Status)
+		setup.POST("/totp", h.limit, h.mfa.Begin)
+		setup.POST("/totp/confirm", h.limit, h.mfa.Confirm)
 
 		signedIn := v1.Group("/admin", session.Require(service))
 		{
 			// Everything about the caller's own account is open to every
 			// administrator who can sign in.
-			signedIn.POST("/auth/logout", h.auth.Logout)
 			signedIn.GET("/me", h.auth.Me)
+
+			// Changing a second factor that is on takes a code from it.
+			signedIn.DELETE("/mfa/totp", h.limit, h.mfa.Disable)
+			signedIn.POST("/mfa/recovery-codes", h.limit, h.mfa.RecoveryCodes)
 			signedIn.GET("/sessions", h.auth.Sessions)
 
 			// The rest is guarded by what the administrator's roles allow.
@@ -211,6 +367,12 @@ func registerRoutes(r *gin.Engine, service *auth.Service, h handlers) {
 			super.GET("/admins/:id", h.admins.Get)
 			super.PATCH("/admins/:id", h.admins.Update)
 			super.DELETE("/admins/:id", h.admins.Delete)
+			super.DELETE("/admins/:id/mfa", h.admins.ResetMFA)
+
+			// The keys tokens are signed with. Rotating them decides which
+			// tokens every API trusts, so it is a super admin's alone.
+			super.GET("/signing-keys", h.keys.List)
+			super.POST("/signing-keys/rotate", h.limit, h.keys.Rotate)
 
 			super.GET("/admin-permissions", h.adminRoles.Permissions)
 			super.GET("/admin-roles", h.adminRoles.List)
@@ -226,11 +388,6 @@ func registerRoutes(r *gin.Engine, service *auth.Service, h handlers) {
 // health says the server is up.
 func health(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
-}
-
-// hello is a placeholder, and an example of what a handler looks like.
-func hello(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"hello": "world"})
 }
 
 // notFound answers any path that no route matched.

@@ -149,7 +149,8 @@ type ActorCount struct {
 
 // TopActors are the administrators who did the most since `since`, busiest
 // first. Signing in and out is left out: it says someone was there, not that
-// they did anything.
+// they did anything. So is what users did at the sign-in pages, which has no
+// administrator behind it.
 func (s *Store) TopActors(ctx context.Context, since time.Time, limit int) ([]ActorCount, error) {
 	// Empty rather than nil: a week with no changes is an empty list in the
 	// JSON, which the panel can count, and not null, which it cannot.
@@ -159,6 +160,7 @@ func (s *Store) TopActors(ctx context.Context, since time.Time, limit int) ([]Ac
 		SELECT actor_email AS actor, COUNT(*) AS events
 		FROM audit_logs
 		WHERE created_at >= @since AND actor_email <> '' AND action NOT LIKE 'admin.log%'
+			AND admin_user_id IS NOT NULL
 		GROUP BY actor_email
 		ORDER BY events DESC, actor_email
 		LIMIT @limit`,

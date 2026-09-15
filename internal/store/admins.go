@@ -78,14 +78,17 @@ func (s *Store) CreateFirstAdmin(ctx context.Context, admin *model.AdminUser) er
 }
 
 // withAssignments loads the roles an administrator holds, each with its role
-// and the application it is scoped to, whole-panel ones first.
+// and the application it is scoped to, whole-panel ones first — and their
+// confirmed second factors, so whether they have two-factor sign-in is known
+// without another query.
 func withAssignments(db *gorm.DB) *gorm.DB {
 	return db.
 		Preload("Assignments", func(db *gorm.DB) *gorm.DB {
 			return db.Order("application_id NULLS FIRST, created_at")
 		}).
 		Preload("Assignments.Role").
-		Preload("Assignments.Application")
+		Preload("Assignments.Application").
+		Preload("MFA", "confirmed_at IS NOT NULL")
 }
 
 // AdminByUsername loads an administrator and the roles they hold. It is what

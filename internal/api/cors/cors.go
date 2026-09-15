@@ -11,6 +11,7 @@ package cors
 import (
 	"net/http"
 	"slices"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -30,9 +31,33 @@ const (
 // panel sends its session cookie, and a browser only sends credentials to an
 // origin the server named, so being loose here would be giving any site that
 // asked the ability to act as whoever is signed in.
+//
+// The provider endpoints a browser app calls directly — the token, userinfo,
+// revocation and introspection endpoints, discovery and the keys — are open
+// to every origin instead, without credentials. They never read a cookie: a
+// caller proves itself with a client secret, a PKCE verifier or a bearer
+// token it already holds, so which site the script came from grants nothing.
+// A single-page app on any domain has to be able to reach them.
 func New(origins []string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		origin := c.GetHeader("Origin")
+
+		if public(c.Request.URL.Path) {
+			if origin != "" {
+				h := c.Writer.Header()
+				h.Set("Access-Control-Allow-Origin", "*")
+				h.Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+				h.Set("Access-Control-Allow-Headers", allowedHeaders)
+			}
+
+			if c.Request.Method == http.MethodOptions {
+				c.AbortWithStatus(http.StatusNoContent)
+				return
+			}
+
+			c.Next()
+			return
+		}
 
 		// A request with no Origin header is not a cross-origin one: curl,
 		// another server, the panel's own server-side rendering. It gets no
@@ -59,4 +84,18 @@ func New(origins []string) gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+// publicPaths are the provider endpoints any origin may call. The authorization
+// and logout endpoints are not among them: a browser is sent to those, it does
+// not call them from script, and they do read the session cookie.
+var publicPaths = []string{
+	"/oauth2/token",
+	"/oauth2/userinfo",
+	"/oauth2/revoke",
+	"/oauth2/introspect",
+}
+
+func public(path string) bool {
+	return slices.Contains(publicPaths, path) || strings.HasPrefix(path, "/.well-known/")
 }

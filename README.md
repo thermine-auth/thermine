@@ -1,54 +1,58 @@
 # xermess
 
-An authentication server written in Go, with a SvelteKit web frontend.
+An authentication server written in Go, with its frontends under `web/`:
+`web/console`, the admin panel, and `web/id`, where users sign in and
+manage their accounts.
 
-> Early days — this is the project scaffold. The auth flows are not implemented yet.
+An OAuth 2.0 authorization server and OpenID Connect provider: authorization
+code with PKCE, refresh tokens, client credentials, userinfo, logout,
+revocation and introspection, with hosted sign-in pages for users and an admin
+panel for everything else.
 
 ## Requirements
 
 - Go 1.27+
 - PostgreSQL 14+
-- [Bun](https://bun.sh) — for the `web/` frontend
+- [Bun](https://bun.sh) and Node.js 24+ — for the apps under `web/`
 
 ## Getting started
 
 ```sh
-make setup   # creates .env from .env.example
-make run
+make setup              # .env with a secret key, the database, dependencies
+make full-start dev     # or: make dev
 ```
 
-The server listens on `:8080` by default. Check it is up:
+That starts the API and both apps. The API's logs stay in the terminal;
+the apps log to `.logs/<app>.log` (`tail -f .logs/id.log`). Ctrl-C stops all of
+them.
 
-```sh
-curl localhost:8080/healthz
-# {"status":"ok"}
-```
+| What        | URL                                  |
+| ----------- | ------------------------------------ |
+| id          | http://localhost:5173                |
+| console     | http://localhost:5174/admin/login    |
+| API         | :8080 public, :8081 admin            |
 
-To run the frontend:
+`make full-start prod` (or `make prod`, or `make full-start -- --prod`) builds
+everything for production and serves the builds on the same URLs, so `.env`
+fits both modes. A bare `make full-start --prod` cannot work: make reads
+`--prod` as an option of its own. `scripts/start.sh --dev|--prod` is the same
+thing without make.
 
-```sh
-make web-install
-make web-dev
-```
+Each app serves the API paths it needs on its own origin, so the browser never
+calls the API directly: Vite's proxy does the routing in dev, `web/serve.js` in
+local prod, Caddy in a deployment (`deploy/README.md`).
 
 ## Make targets
 
-The Makefile is the index of what can be done; anything longer than a couple
-of lines lives in `scripts/` and is called from a target. `make setup` runs
-`scripts/install.sh`, `make db-create` runs `scripts/db.sh create`, and so on
-— so there is one implementation of each, and the container, which has no
-make, can run the same scripts.
+Run `make` for the list:
 
-Run `make` on its own for the full list, grouped by what it is for:
-
-| Group           | Targets                                                                |
-| --------------- | ---------------------------------------------------------------------- |
-| Getting started | `setup`, `env`, `deps`                                                 |
-| Development     | `run`, `run-migrate`, `build`, `release`, `clean`                      |
-| Database        | `migrate-up`, `migrate-down`, `migrate-status`, `migrate-new name=x`, `db-create`, `db-reset`, `db-psql` |
-| Quality         | `check` (fmt + vet + test), `fmt`, `vet`, `test`, `test-integration`, `tidy` |
-| Container       | `docker-build`, `docker-run`                                           |
-| Frontend        | `web-install`, `web-dev`, `web-build`, `web-start`                     |
+| Group    | Targets                                                                  |
+| -------- | ------------------------------------------------------------------------ |
+| Setup    | `setup`                                                                  |
+| Run      | `full-start dev\|prod`, `dev`, `prod`, `run` (API only), `build`          |
+| Quality  | `check`, `test`, `test-integration`, `web-check`, `web-build`            |
+| Database | `migrate-up`, `migrate-down`, `migrate-status`, `migrate-new name=x`, `db-create`, `db-reset`, `db-psql` |
+| Deploy   | `deploy-build`, `deploy-up`, `deploy-down`, `deploy-logs`, `clean`       |
 
 ## Layout
 
@@ -61,8 +65,18 @@ internal/database/database.go  opens the connection
 internal/database/migrate.go   applies migrations
 internal/store/                every query in the project, one file per subject
 internal/auth/auth.go          signs administrators in and out, records what they do
+internal/oidc/                 the OAuth 2.0 / OpenID Connect provider: authorize, tokens,
+                               userinfo, logout, sessions, registration, password resets
+internal/jose/                 signing and checking JWTs, publishing keys, sealing them
+internal/mail/                 sending email over SMTP, or into the log
 internal/api/server.go         the engine, and the table of every route
 internal/api/auth/             signing in and out, and who is signed in
+internal/api/oauth/            the provider endpoints: /oauth2/* and /.well-known/*
+internal/api/account/          what the id app calls: login, register, reset, the account
+internal/api/setup/            creating the first administrator
+internal/api/mfa/              an administrator's authenticator and recovery codes
+internal/api/keys/             listing and rotating token signing keys
+internal/api/apis/             the APIs (resource servers) tokens are issued for
 internal/api/users/            the users an organisation manages
 internal/api/fields/           the fields a user record is made of
 internal/api/applications/     OAuth 2.0 / OIDC clients: settings, secrets
@@ -72,6 +86,10 @@ internal/api/adminroles/       admin roles and the permissions they grant
 internal/api/activity/         the dashboard counts and the log
 internal/api/middleware/       request logging, recovery, and their order
 internal/api/cors/             which browser origins may call the API
+internal/api/csrf/             changes only from the app's own origin, and only as JSON
+internal/api/ratelimit/        per-address limits on passwords and emails
+internal/api/query/            paging and filter parameters shared by the lists
+internal/api/validate/         request validation rules
 internal/api/session/          the cookie, the session check, the current admin
 internal/api/respond/          how an error is written, once for every endpoint
 internal/api/audit/            recording what an administrator did
@@ -79,32 +97,42 @@ internal/model/                one file per table, listed in model.All
 
 migrations/                    one Go file per migration, applied in order
 
-scripts/install.sh             set the project up on a fresh machine
+scripts/setup.sh               prepare a fresh checkout
+scripts/start.sh               run the API and the apps, --dev or --prod
 scripts/db.sh                  create, reset or open the database
-scripts/build.sh               build for release, stamping in the version
-scripts/entrypoint.sh          what the container runs: migrate, then serve
-scripts/lib.sh                 what those scripts share: .env, the DSN, checks
-scripts/Dockerfile             the API image, built from the repository root
+scripts/lib.sh                 what the scripts share: .env, checks
 
-web/src/lib/api/               the typed client for this API
-web/src/lib/query/             the query cache: its client, its keys, its options
-web/src/lib/components/ui/     the design system: Button, Drawer, DataTable, Panel, List, Tag…
-web/src/lib/components/layout/ the panel's frame: header, sidebar, account menu
-web/src/lib/components/users/  the users feature: table, drawers, field inputs
-web/src/lib/components/roles/  roles, their mappings and pickers
-web/src/lib/components/applications/ applications, their API access, token preview
-web/src/lib/components/apis/   APIs, their scopes and settings
-web/src/lib/components/admins/ administrators and admin roles
-web/src/lib/components/activity/ the dashboard: chart, sign-ins, feed, what the log's actions mean
-web/src/lib/components/profile/  the account: its sessions and signing out
-web/src/lib/state/             what the panel remembers: the theme, the sidebar's width
-web/src/lib/utils/             how values are shown
-web/src/lib/data/demo.ts       placeholder rows for the sections with no backend
-web/src/lib/server/api.ts      calling the API from a server load, with the session
-web/src/lib/constants.ts       the names both sides agree on: the cookies
-web/src/lib/styles/            fonts.css, tokens.css, base.css, ark.css
-web/src/routes/admin/login/    the sign-in page
-web/src/routes/admin/(panel)/  everything behind a session
+deploy/compose.yaml            the production stack: Postgres, API, apps, Caddy
+deploy/Caddyfile               the edge: which paths go to the API, staff-only admin
+deploy/docker/                 api.Dockerfile, web.Dockerfile (any app), their ignore files
+
+web/console/                   the admin panel (SvelteKit)
+web/id/                        the users' app: sign-in pages and account management (SvelteKit)
+web/serve.js                   serves an app's build with its API paths in front, for make prod
+
+web/console/src/lib/api/               the typed client for this API
+web/console/src/lib/query/             the query cache: its client, its keys, its options
+web/console/src/lib/components/ui/     the design system: Button, Drawer, DataTable, Panel, List, Tag…
+web/console/src/lib/components/layout/ the panel's frame: header, sidebar, account menu
+web/console/src/lib/components/users/  the users feature: table, drawers, field inputs
+web/console/src/lib/components/roles/  roles, their mappings and pickers
+web/console/src/lib/components/applications/ applications, their API access, token preview
+web/console/src/lib/components/apis/   APIs, their scopes and settings
+web/console/src/lib/components/admins/ administrators and admin roles
+web/console/src/lib/components/activity/ the dashboard: chart, sign-ins, feed, what the log's actions mean
+web/console/src/lib/components/profile/  the account: its sessions and signing out
+web/console/src/lib/state/             what the panel remembers: the theme, the sidebar's width
+web/console/src/lib/utils/             how values are shown
+web/console/src/lib/data/demo.ts       placeholder rows for the sections with no backend
+web/console/src/lib/server/api.ts      calling the API from a server load, with the session
+web/console/src/lib/constants.ts       the names both sides agree on: the cookies
+web/console/src/lib/styles/            fonts.css, tokens.css, base.css, ark.css
+web/console/src/routes/admin/login/    the sign-in page
+web/console/src/routes/admin/(panel)/  everything behind a session
+
+web/id/src/routes/(auth)/     the sign-in pages users reach from an application
+web/id/src/routes/(account)/  a signed-in user's profile, security and connected apps
+web/id/src/lib/components/    its own small component set, on Svelte alone
 ```
 
 ### The API packages
@@ -142,9 +170,9 @@ Signing out calls `queryClient.clear()`: what one administrator saw is not for
 whoever signs in next on that browser.
 
 ```
-web/src/lib/query/client.ts    the client, and what its defaults mean
-web/src/lib/query/keys.ts      the names the cache knows things by
-web/src/lib/query/users.ts     the options for the user list and the fields
+web/console/src/lib/query/client.ts    the client, and what its defaults mean
+web/console/src/lib/query/keys.ts      the names the cache knows things by
+web/console/src/lib/query/users.ts     the options for the user list and the fields
 ```
 
 ### The store
@@ -159,8 +187,14 @@ place to read and change. It has its own errors, `store.ErrNotFound` and
 internal/store/store.go        the Store type, and the errors it returns
 internal/store/users.go        listing, searching and writing users
 internal/store/user_fields.go  the field definitions
+internal/store/user_roles.go   roles users hold, and their mappings
+internal/store/applications.go OAuth clients and what they may reach
+internal/store/apis.go         APIs and their scopes
 internal/store/admins.go       administrators, for signing in
+internal/store/admin_roles.go  admin roles and their permissions
 internal/store/sessions.go     sessions: start, find, revoke, list
+internal/store/mfa.go          authenticators and recovery codes
+internal/store/oauth.go        codes, refresh tokens, user sessions, signing keys
 internal/store/audit.go        the activity log, and the dashboard counts
 ```
 
@@ -170,19 +204,32 @@ who may sign in, `api` answers requests. Nothing imports `api` except `main`,
 and `model` imports nothing of ours at all.
 
 Startup is `run` in `cmd/xermess/main.go`, top to bottom: read the
-configuration, open the database, apply migrations, build the store, serve.
+configuration, open the database, apply migrations, build the store and the
+provider, serve.
 
-The server is Gin with its defaults: `server.New` builds the engine and
-`engine.Run(addr)` listens. Ctrl-C stops the process immediately, so a request
-being handled at that moment is cut off — fine in development, worth revisiting
-before this runs for real.
+`api.NewPublic` and `api.NewAdmin` build the two Gin engines, and `serve` runs
+them on their listeners. A path exists on one of them only: the admin API is
+never on the public listener, which is what keeps it off the internet however
+the proxy in front is configured. Ctrl-C or SIGTERM stops both and lets
+requests under way finish, for up to 15 seconds.
+
+Administrators sign in with a second factor — a TOTP authenticator app, with
+single-use recovery codes — required by default (`XERMESS_ADMIN_MFA`). A
+session whose password was right but whose code is still to come can do nothing
+but give the code; one that has to set an authenticator up can do nothing but
+that (`internal/auth/mfa.go`, `internal/totp`). Token signing keys rotate every
+`XERMESS_KEY_ROTATION_DAYS`, a new one published a day before it signs.
+
+Every cookie-authenticated API takes changes only from its app's origin
+(`internal/api/csrf`): another origin gets 403, a body that is not JSON 415.
+Sign-in, registration, setup and password resets are rate limited per address
+(`internal/api/ratelimit`).
 
 ## API
 
 | Method | Path                          | Needs a session | Description                    |
 | ------ | ----------------------------- | --------------- | ------------------------------ |
 | `GET`  | `/healthz`                    | no              | The server is up               |
-| `GET`  | `/api/v1/hello`               | no              | Placeholder                    |
 | `POST` | `/api/v1/admin/auth/login`    | no              | Sign in, sets the session cookie |
 | `POST` | `/api/v1/admin/auth/logout`   | yes             | Sign out, revokes the session  |
 | `GET`  | `/api/v1/admin/me`            | yes             | The signed-in administrator    |
@@ -198,6 +245,56 @@ before this runs for real.
 | `DELETE`| `/api/v1/admin/user-fields/:id` | yes          | Remove a field                 |
 | `GET`  | `/api/v1/admin/sessions`      | yes             | The caller's own sessions      |
 
+The table above is the start of the admin API; the full list, with the
+permission each route needs, is in `registerRoutes` in `internal/api/server.go`.
+
+### The provider
+
+| Method | Path                                  | Description                                  |
+| ------ | ------------------------------------- | -------------------------------------------- |
+| `GET`  | `/.well-known/openid-configuration`   | Discovery document                           |
+| `GET`  | `/.well-known/jwks.json`              | Public signing keys                          |
+| `GET`  | `/oauth2/authorize`                   | Start a sign-in; redirects to the sign-in page or back with a code |
+| `POST` | `/oauth2/token`                       | `authorization_code`, `refresh_token`, `client_credentials` |
+| `GET`  | `/oauth2/userinfo`                    | Claims about the user behind an access token |
+| `GET`  | `/oauth2/logout`                      | RP-initiated logout                          |
+| `POST` | `/oauth2/revoke`                      | Revoke a refresh token                       |
+| `POST` | `/oauth2/introspect`                  | Whether a token is active                    |
+| `GET`  | `/api/v1/account/requests/:handle`    | The sign-in under way, for the sign-in page  |
+| `POST` | `/api/v1/account/login`               | Sign a user in; answers where to go next     |
+| `POST` | `/api/v1/account/register`            | Create an account for a sign-in under way    |
+| `POST` | `/api/v1/account/forgot-password`     | Email a reset link                           |
+| `POST` | `/api/v1/account/reset-password`      | Set a new password through a reset link      |
+
+What a token carries is decided in one place, `model.EvaluateToken`, which the
+panel's token preview runs too. Signing keys are made on first start, one per
+algorithm, and stored encrypted with `XERMESS_SECRET_KEY`. Every code, refresh
+token, session and reset link is stored as a SHA-256 hash. Refresh tokens
+rotate, and a replayed one revokes its whole family.
+
+The sign-in pages are `web/id`, a SvelteKit app of their own. The
+authorization endpoint sends browsers to its `/login` with a handle for the
+sign-in; the page shows the application's name, logo, terms and privacy links
+from that handle, and posts to the account endpoints, which set the user's
+session cookie — a different cookie from the panel's — and answer with the
+redirect back to the application.
+
+With that session, the same app is the user's account: their name, their
+password, the devices they are signed in on, and the applications holding
+refresh tokens for them, each of which they can sign out or disconnect. Those
+endpoints take nothing but the session, so a user only ever reaches their own
+account:
+
+| Method   | Path                                                 | Description                       |
+| -------- | ---------------------------------------------------- | --------------------------------- |
+| `GET`    | `/api/v1/account/me`                                 | The signed-in user                |
+| `PATCH`  | `/api/v1/account/me`                                 | Change their name                 |
+| `POST`   | `/api/v1/account/password`                           | Change the password; signs out everywhere else |
+| `GET`    | `/api/v1/account/sessions`                           | Where they are signed in          |
+| `DELETE` | `/api/v1/account/sessions/:id`                       | Sign another device out           |
+| `GET`    | `/api/v1/account/connected-applications`             | Apps holding refresh tokens       |
+| `DELETE` | `/api/v1/account/connected-applications/:client_id`  | Revoke an app's refresh tokens    |
+
 Sessions are a random token in an HttpOnly cookie; the database keeps only a
 SHA-256 hash of it, so a leaked database cannot be signed in with. They last
 12 hours. Signing in, failing to sign in, and signing out are all written to
@@ -210,24 +307,17 @@ behind `session.Require` unless it is meant to be public.
 
 ## Admin panel
 
-The SvelteKit app in `web/` is the admin panel.
+The SvelteKit app in `web/console/` is the admin panel.
 
 ```sh
-make run          # the API, on :8080
-make web-dev      # the panel, on :5173
+make dev     # the API and the apps; the panel is on :5174
 ```
 
-`make web-start` builds the panel and serves that build on :4173, which is how
-to check a production build locally. That is a different origin from the dev
-server, so :4173 has to be in `XERMESS_CORS_ORIGINS` too — it is in
-`.env.example`. An origin missing from that list has its responses discarded
-by the browser, which the panel can only report as not being able to reach
-the server. It is Vite's preview server, not a
-production one: `adapter-auto` finds no known platform here, so nothing
-deployable is produced. Choose an adapter — `adapter-node` for running it
-yourself — when it is time to deploy.
+`make prod` runs the production build instead, behind `web/serve.js`, which
+routes `/api/v1/admin` to the admin listener as Caddy does in a deployment.
+Every app builds with `adapter-node`; `deploy/docker/web.Dockerfile` packages it.
 
-Then open http://localhost:5173/admin/login. A panel with no administrator
+Then open http://localhost:5174/admin/login. A panel with no administrator
 sends you to `/admin/new-super-admin` to make the first one; after that,
 signing in leads to `/admin/dashboard`.
 
@@ -288,22 +378,20 @@ two-factor), preferences (theme, language) and sessions. Theme and sign out
 work; the rest are marked as not available yet and their controls are
 disabled rather than pretending.
 
-`web/.env` names the API in `PUBLIC_API_URL`, used both by the server when it
-renders a page and by the browser for signing in and out — which is why
-`XERMESS_CORS_ORIGINS` has to list the panel's own address.
-
-Server-side rendering reads the session cookie the API set. That works
-locally because cookies ignore port numbers, so a cookie set by `:8080` is
-sent to `:5173`. Across two real domains it would not be: the API would have
-to set the cookie on a domain that covers both.
+`web/console/.env` names the admin API in `API_URL`. The browser never uses it:
+it calls `/api/v1/admin/...` on the panel's own origin, and the proxy routes
+that to the API. So the session cookie the API sets belongs to the panel's
+host, and server-side rendering can read it — on any domain, not only on
+localhost.
 
 **Rendering.** Pages are rendered on the server, which is what makes a reload
 show the finished page rather than assembling one: the theme, the title and
 the content are all in the first response. That means the data has to be
 fetched on the server too, so the loads are `+page.server.ts` and
-`+layout.server.ts`, and `lib/server/api.ts` forwards the session cookie to
-the API — a fetch made by the server carries none of the browser's cookies on
-its own.
+`+layout.server.ts`. They call the API by path with the load's `fetch`, and
+`handleFetch` in `hooks.server.ts` (`lib/server/proxy.ts`) sends those calls to
+`API_URL` directly, with the reader's cookie — a fetch made by the server
+carries none of the browser's cookies on its own.
 
 Signing in and out still happen in the browser, followed by `invalidateAll()`
 so the server loads run again with the new session.
@@ -457,21 +545,31 @@ Every setting is an environment variable, read from `.env` first; real
 environment variables win. `.env.example` lists all of them. `XERMESS_DB_DSN`
 has no default, so a missing one stops the server.
 
-Two settings matter as soon as the API leaves a developer's machine:
-`XERMESS_SECURE_COOKIES=true` sends the session cookie over HTTPS only, and
-`XERMESS_TRUSTED_PROXIES` lists the reverse proxies whose `X-Forwarded-For`
-is believed. With none listed, the address recorded for every request is the
-connection's own, so a caller cannot write a made-up one into the activity
-log.
+`XERMESS_SECRET_KEY` has no default either: it encrypts the signing keys, so
+`make setup` writes a random one into a new `.env`. Keep it: a different key
+cannot read the stored signing keys, and the server will not start.
+`XERMESS_ISSUER` is the public URL tokens name the server by — the id app's
+origin, which routes the provider paths to the API — and `XERMESS_ACCOUNT_URL`
+defaults to it. `XERMESS_ADMIN_URL` is the console's; only that origin may change
+anything through the admin API. With no
+`XERMESS_SMTP_HOST`, password reset emails are written to the log.
+
+Session cookies are Secure when `XERMESS_ACCOUNT_URL` and `XERMESS_ADMIN_URL`
+are https, without a setting to forget. `XERMESS_TRUSTED_PROXIES` lists the
+reverse proxies whose `X-Forwarded-For` is believed. With none listed, the
+address recorded for every request is the connection's own, so a caller cannot
+write a made-up one into the activity log — but behind a proxy it has to be
+set, or every request, and the rate limit, count as the proxy's.
+`XERMESS_ADMIN_ADDR` must differ from `XERMESS_ADDR`; never publish it.
 
 `make test-integration` runs the tests that need Postgres. They connect to
 the server in `.env` only to create a database of their own for each test,
 and drop it afterwards; without `XERMESS_TEST_DB_DSN` set, `go test` skips
 them.
 
-The `migrations/` directory has to ship with the binary: goose reads the file
-names from disk, at the path in `XERMESS_DB_MIGRATE_DIR`, and matches them to
-the functions compiled in.
+The migrations are compiled into the binary. Goose still needs the directory in
+`XERMESS_DB_MIGRATE_DIR` to exist; when it holds no `.go` files, as in the
+container image, every compiled-in migration is applied.
 
 ## License
 
